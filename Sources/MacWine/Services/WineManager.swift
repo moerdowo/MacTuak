@@ -557,6 +557,9 @@ final class WineManager: ObservableObject {
         }
         Task { @MainActor in
             do {
+                // winetricks relies on cabextract / 7z to unpack components.
+                await self.ensureWinetricksDeps(into: session)
+
                 session.append("Preparing winetricks…")
                 let script = try await Winetricks.ensureInstalled()
                 let p = Process()
@@ -568,13 +571,76 @@ final class WineManager: ObservableObject {
                 env["WINEARCH"] = bottle.winArch
                 p.environment = env
                 session.append("$ winetricks -q \(verbs.joined(separator: " "))")
-                stream(p, into: session)
+                let code = await self.runStreaming(p, into: session)
+                let ok = code == 0
+                session.append(ok ? "→ done." : "→ exited with code \(code).")
+                session.phase = ok ? .exited : .error
+                Notifier.notify(ok ? "Finished: \(title)" : "Failed: \(title)",
+                                ok ? "Completed successfully." : "Exited with code \(code).")
             } catch {
                 session.phase = .error
                 session.append("error: \(error.localizedDescription)")
             }
         }
         return session
+    }
+
+    /// Ensures cabextract/7z are installed (via Homebrew) so winetricks can unpack
+    /// CAB-based components. Best-effort; reports guidance if Homebrew is absent.
+    private func ensureWinetricksDeps(into session: ConsoleSession) async {
+        let missing = ["cabextract", "7z"].filter { !hasTool($0) }
+        guard !missing.isEmpty else { return }
+        session.append("winetricks needs: \(missing.joined(separator: ", ")).")
+        guard let brew = brewPath() else {
+            session.append("Homebrew was not found — install it, then the components:")
+            session.append("  /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"")
+            session.append("  brew install cabextract p7zip")
+            return
+        }
+        session.append("Installing cabextract + p7zip via Homebrew (one-time)…")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: brew)
+        p.arguments = ["install", "cabextract", "p7zip"]
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "\((brew as NSString).deletingLastPathComponent):/usr/bin:/bin:" + (env["PATH"] ?? "")
+        env["HOMEBREW_NO_AUTO_UPDATE"] = "1"
+        env["HOMEBREW_NO_INSTALL_CLEANUP"] = "1"
+        env["NONINTERACTIVE"] = "1"
+        p.environment = env
+        _ = await runStreaming(p, into: session)
+    }
+
+    private func hasTool(_ name: String) -> Bool {
+        ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+            .contains { FileManager.default.isExecutableFile(atPath: "\($0)/\(name)") }
+    }
+    private func brewPath() -> String? {
+        ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+            .first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    /// Runs a process, streaming merged stdout/stderr into the session, and
+    /// resumes with its exit code when it finishes.
+    private func runStreaming(_ proc: Process, into session: ConsoleSession) async -> Int32 {
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = pipe
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            Task { @MainActor in session.ingest(text) }
+        }
+        return await withCheckedContinuation { cont in
+            proc.terminationHandler = { p in
+                pipe.fileHandleForReading.readabilityHandler = nil
+                cont.resume(returning: p.terminationStatus)
+            }
+            do { try proc.run() } catch {
+                let msg = error.localizedDescription
+                Task { @MainActor in session.append("error: \(msg)") }
+                cont.resume(returning: -1)
+            }
+        }
     }
 
     /// Sets the bottle's reported Windows version via winetricks (win7/win10/win11).

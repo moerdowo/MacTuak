@@ -27,7 +27,7 @@ After the first successful launch, MacWine opens normally like any other app. (P
 - **App library** — add Windows apps by dragging a `.exe`/folder anywhere into the window, the **Add App** button, or by scanning a bottle's Program Files. Double-click to run.
 - **Bundled, self-updating Wine** — on first launch MacWine downloads the latest **stable** Wine build into its support folder and checks for newer builds on every open. Choose the stable / staging / devel channel in Tweaks. No separate Wine install needed.
 - **Wine bottles** — create, rename, and delete isolated prefixes; pick the Windows version (7/10/11) and architecture (32/64-bit); run `winecfg`, `regedit`, the Control Panel, open the C: drive, initialize/repair, or reset.
-- **winetricks** — one-click install of common runtime components (DXVK, VKD3D, Visual C++ runtimes, .NET, core fonts, …).
+- **winetricks** — one-click install of common runtime components (DXVK, VKD3D, Visual C++ runtimes, .NET, core fonts, …). The required helpers `cabextract` and `p7zip` are installed automatically via [Homebrew](https://brew.sh) on first use.
 - **Per-app launch options** — arguments, working directory, environment variables, `WINEDEBUG`, esync, Retina/HiDPI, and a virtual desktop size.
 - **Custom & extracted icons** — pick your own image, or let MacWine pull the real icon straight out of the `.exe` (it also auto-detects x86/x64).
 - **Add to Applications** — export a standalone double-clickable launcher to `~/Applications`.
