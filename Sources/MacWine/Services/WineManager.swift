@@ -597,7 +597,24 @@ final class WineManager: ObservableObject {
 
     /// Ensures cabextract/7z are installed (via Homebrew) so winetricks can unpack
     /// CAB-based components. Best-effort; reports guidance if Homebrew is absent.
+    /// Makes the bundled tools owner-writable and strips the download-quarantine
+    /// flag so they can be exec'd (and so `xattr -dr` on the app won't choke).
+    private func prepareBundledTools() {
+        guard let dir = bundledToolsDir?.path else { return }
+        for t in ["cabextract", "7za"] {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: "\(dir)/\(t)")
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        p.arguments = ["-dr", "com.apple.quarantine", dir]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
+        p.waitUntilExit()
+    }
+
     private func ensureWinetricksDeps(into session: ConsoleSession) async {
+        prepareBundledTools()
         let missing = ["cabextract", "7z"].filter { !hasTool($0) }
         guard !missing.isEmpty else { return }
         session.append("winetricks needs: \(missing.joined(separator: ", ")).")

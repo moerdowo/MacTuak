@@ -20,7 +20,8 @@ if [ -d vendor ]; then
   cp vendor/cabextract "$APP/Contents/Resources/tools/cabextract"
   cp vendor/7za        "$APP/Contents/Resources/tools/7za"
   ln -sf 7za           "$APP/Contents/Resources/tools/7z"
-  chmod +x "$APP/Contents/Resources/tools/cabextract" "$APP/Contents/Resources/tools/7za"
+  # 0755 (owner-writable) so `xattr -dr` and runtime de-quarantine can modify them.
+  chmod 755 "$APP/Contents/Resources/tools/cabextract" "$APP/Contents/Resources/tools/7za"
 fi
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
