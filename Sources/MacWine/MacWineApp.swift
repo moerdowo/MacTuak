@@ -32,8 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
-/// Makes the host window transparent and full-bleed so the wallpaper reaches the
-/// rounded corners and Liquid Glass can sample it.
+/// Full-bleed opaque window: hidden/transparent titlebar so the content runs to
+/// the top (traffic lights float over the sidebar), but the window itself stays
+/// opaque — no see-through background.
 private struct WindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let v = NSView()
@@ -42,8 +43,6 @@ private struct WindowConfigurator: NSViewRepresentable {
             win.titlebarAppearsTransparent = true
             win.titleVisibility = .hidden
             win.isMovableByWindowBackground = true
-            win.backgroundColor = .clear
-            win.isOpaque = false
             win.styleMask.insert(.fullSizeContentView)
             win.center()
         }

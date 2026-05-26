@@ -20,8 +20,9 @@ struct ContentView: View {
 
     var body: some View {
         let accent = settings.accentColor
+        let p = Palette.make(settings.dark)
         ZStack {
-            WallpaperView(wallpaper: settings.wallpaper, animate: settings.animateWallpaper)
+            p.appBG.ignoresSafeArea()
 
             HStack(spacing: 0) {
                 Sidebar(section: $section, onAdd: openAdd)
@@ -46,6 +47,7 @@ struct ContentView: View {
                     .zIndex(60)
             }
         }
+        .environment(\.palette, p)
         .preferredColorScheme(settings.dark ? .dark : .light)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: launch != nil)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: adding)
@@ -58,6 +60,7 @@ struct ContentView: View {
 
     private func mainColumn(accent: Color) -> some View {
         let list = visibleApps
+        let p = Palette.make(settings.dark)
         return VStack(spacing: 0) {
             MainToolbar(title: sectionTitle,
                         subtitle: "\(list.count) app\(list.count == 1 ? "" : "s")",
@@ -85,8 +88,8 @@ struct ContentView: View {
                                        menu: { AnyView(menu(for: app)) })
                         }
                     }
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.5), lineWidth: 0.5))
+                    .background(p.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(p.border, lineWidth: 0.5))
                     .padding(.horizontal, 28).padding(.top, 12).padding(.bottom, 28)
                 }
             }
@@ -94,7 +97,7 @@ struct ContentView: View {
             StatusBar()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.regularMaterial.opacity(0.55))
+        .background(p.contentBG)
     }
 
     // MARK: - Context menu

@@ -1,17 +1,5 @@
 import SwiftUI
 
-// MARK: - Liquid Glass helper
-
-extension View {
-    /// Applies macOS Tahoe Liquid Glass clipped to `shape`, optionally tinted/interactive.
-    func liquidGlass<S: Shape>(_ shape: S, tint: Color? = nil, interactive: Bool = false) -> some View {
-        var glass = Glass.regular
-        if let tint { glass = glass.tint(tint) }
-        if interactive { glass = glass.interactive() }
-        return glassEffect(glass, in: shape)
-    }
-}
-
 // MARK: - App icon (fake .exe tile: gradient + glyph + window-pane mark)
 
 struct AppIconView: View {
@@ -26,7 +14,6 @@ struct AppIconView: View {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(LinearGradient(colors: [g1, g2], startPoint: .topLeading, endPoint: .bottomTrailing))
 
-            // spec highlight
             Ellipse()
                 .fill(RadialGradient(colors: [.white.opacity(0.55), .clear],
                                      center: .center, startRadius: 0, endRadius: size * 0.45))
@@ -38,7 +25,6 @@ struct AppIconView: View {
                 .foregroundStyle(.white.opacity(0.96))
                 .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
 
-            // windows-pane mark, bottom-right
             WindowsPane()
                 .frame(width: size * 0.22, height: size * 0.22)
                 .opacity(0.85)
@@ -95,13 +81,14 @@ struct PillButton<Label: View>: View {
     var action: () -> Void
     @ViewBuilder var label: () -> Label
 
+    @Environment(\.palette) private var p
     @State private var hover = false
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) { label() }
                 .font(.system(size: 13, weight: primary ? .semibold : .medium))
-                .foregroundStyle(primary ? Color.white : Color.primary)
+                .foregroundStyle(primary ? Color.white : p.text)
                 .frame(height: 30)
                 .padding(.horizontal, 13)
         }
@@ -113,12 +100,13 @@ struct PillButton<Label: View>: View {
                                          startPoint: .top, endPoint: .bottom))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
-                    .shadow(color: accent.opacity(0.45), radius: 5, y: 2)
+                    .shadow(color: accent.opacity(0.35), radius: 4, y: 2)
             } else {
-                Color.clear.liquidGlass(RoundedRectangle(cornerRadius: 10, style: .continuous), interactive: true)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(hover ? p.controlActive : p.control)
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(p.border, lineWidth: 0.5))
             }
         }
-        .brightness(hover && primary ? 0.05 : 0)
         .onHover { hover = $0 }
     }
 }
@@ -128,8 +116,11 @@ struct PillButton<Label: View>: View {
 struct SegmentedControl<T: Hashable>: View {
     let options: [(value: T, label: String, system: String)]
     @Binding var value: T
+    @Environment(\.palette) private var p
 
     var body: some View {
+        let track = p.isDark ? p.control : Color.black.opacity(0.06)
+        let thumb = p.isDark ? p.controlActive : Color.white
         HStack(spacing: 2) {
             ForEach(options, id: \.value) { opt in
                 let active = opt.value == value
@@ -138,13 +129,13 @@ struct SegmentedControl<T: Hashable>: View {
                         Image(systemName: opt.system).font(.system(size: 11, weight: .semibold))
                         Text(opt.label).font(.system(size: 12, weight: .semibold))
                     }
-                    .foregroundStyle(active ? Color.primary : Color.secondary)
+                    .foregroundStyle(active ? p.text : p.textSecondary)
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background {
                         if active {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(.background.opacity(0.95))
-                                .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
+                                .fill(thumb)
+                                .shadow(color: .black.opacity(p.isDark ? 0.3 : 0.12), radius: 2, y: 1)
                         }
                     }
                 }
@@ -152,7 +143,8 @@ struct SegmentedControl<T: Hashable>: View {
             }
         }
         .padding(2)
-        .liquidGlass(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(track))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(p.border, lineWidth: 0.5))
     }
 }
 
@@ -166,6 +158,7 @@ struct SidebarRow<Icon: View>: View {
     let accent: Color
     let action: () -> Void
 
+    @Environment(\.palette) private var p
     @State private var hover = false
 
     var body: some View {
@@ -176,10 +169,10 @@ struct SidebarRow<Icon: View>: View {
                 Spacer(minLength: 4)
                 if let count {
                     Text("\(count)").font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(selected ? .white.opacity(0.85) : .secondary)
+                        .foregroundStyle(selected ? .white.opacity(0.85) : p.textSecondary)
                 }
             }
-            .foregroundStyle(selected ? Color.white : Color.primary)
+            .foregroundStyle(selected ? Color.white : p.text)
             .padding(.horizontal, 12)
             .frame(height: 30)
             .background {
@@ -189,7 +182,8 @@ struct SidebarRow<Icon: View>: View {
                                              startPoint: .top, endPoint: .bottom))
                         .shadow(color: accent.opacity(0.27), radius: 2, y: 1)
                 } else if hover {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.06))
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(p.isDark ? Color.white.opacity(0.07) : Color.black.opacity(0.05))
                 }
             }
         }
@@ -202,11 +196,12 @@ struct SidebarRow<Icon: View>: View {
 
 struct SidebarSectionHeader: View {
     let text: String
+    @Environment(\.palette) private var p
     var body: some View {
         Text(text.uppercased())
             .font(.system(size: 11, weight: .bold))
             .tracking(0.4)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(p.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
             .padding(.top, 14).padding(.bottom, 6)

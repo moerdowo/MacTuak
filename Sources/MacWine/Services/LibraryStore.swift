@@ -21,7 +21,7 @@ final class LibraryStore: ObservableObject {
         load()
     }
 
-    static var supportDirectory: URL {
+    nonisolated static var supportDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent("MacWine", isDirectory: true)
     }

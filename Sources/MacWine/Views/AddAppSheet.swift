@@ -5,6 +5,7 @@ import AppKit
 struct AddAppSheet: View {
     @EnvironmentObject var library: LibraryStore
     @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var p
     let accent: Color
     /// Pre-filled URL when the sheet was opened from a window drop.
     var prefilled: URL?
@@ -19,8 +20,7 @@ struct AddAppSheet: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.40).ignoresSafeArea()
-                .background(.ultraThinMaterial)
+            Color.black.opacity(0.4).ignoresSafeArea()
                 .onTapGesture(perform: onClose)
 
             VStack(spacing: 0) {
@@ -107,8 +107,8 @@ struct AddAppSheet: View {
                 .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 0.5) }
             }
             .frame(width: 480)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.white.opacity(0.4), lineWidth: 0.5))
+            .background(p.appBG, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(p.border, lineWidth: 0.5))
             .shadow(color: .black.opacity(0.30), radius: 40, y: 24)
             .transition(.scale(scale: 0.95).combined(with: .opacity))
         }
@@ -124,8 +124,8 @@ struct AddAppSheet: View {
             TextField(placeholder, text: text)
                 .textFieldStyle(.plain).font(.system(size: 13))
                 .padding(.horizontal, 10).frame(height: 28)
-                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(.background.opacity(0.9)))
-                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(p.control))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(p.border, lineWidth: 0.5))
         }
     }
 
@@ -178,22 +178,23 @@ struct AddAppSheet: View {
 }
 
 struct DropOverlay: View {
+    @Environment(\.palette) private var p
     let accent: Color
     var body: some View {
         ZStack {
-            accent.opacity(0.13).ignoresSafeArea().background(.ultraThinMaterial)
+            accent.opacity(0.18).ignoresSafeArea()
             VStack(spacing: 10) {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(LinearGradient(colors: [accent, accent.darkened(0.3)], startPoint: .top, endPoint: .bottom))
                     .frame(width: 60, height: 60)
                     .overlay(Image(systemName: "square.and.arrow.up").font(.system(size: 26)).foregroundStyle(.white))
                     .shadow(color: accent.opacity(0.5), radius: 12)
-                Text("Drop to install").font(.system(size: 16, weight: .bold))
+                Text("Drop to install").font(.system(size: 16, weight: .bold)).foregroundStyle(p.text)
                 Text("Drop a .exe or folder to add it to your library.")
-                    .font(.system(size: 12.5)).foregroundStyle(.secondary)
+                    .font(.system(size: 12.5)).foregroundStyle(p.textSecondary)
             }
             .padding(32).frame(width: 360)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(p.appBG, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(accent, lineWidth: 2))
             .shadow(color: .black.opacity(0.25), radius: 40, y: 20)
         }

@@ -3,26 +3,30 @@ import SwiftUI
 /// The design's "Tweaks" panel, surfaced natively as a popover from a toolbar button.
 struct TweaksButton: View {
     @EnvironmentObject var settings: Settings
-    @EnvironmentObject var library: LibraryStore
+    @EnvironmentObject var wine: WineManager
+    @Environment(\.palette) private var p
     @State private var open = false
 
     var body: some View {
         Button { open.toggle() } label: {
             Image(systemName: "slider.horizontal.3").font(.system(size: 13, weight: .medium))
+                .foregroundStyle(p.text)
                 .frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
-        .background(Color.clear.liquidGlass(RoundedRectangle(cornerRadius: 10, style: .continuous), interactive: true))
+        .solidSurface(RoundedRectangle(cornerRadius: 10, style: .continuous), p)
         .popover(isPresented: $open, arrowEdge: .bottom) {
-            TweaksContent().environmentObject(settings).environmentObject(library)
-                .frame(width: 260)
+            TweaksContent()
+                .environmentObject(settings).environmentObject(wine)
+                .environment(\.palette, p)
+                .frame(width: 280)
         }
     }
 }
 
 private struct TweaksContent: View {
     @EnvironmentObject var settings: Settings
-    @EnvironmentObject var library: LibraryStore
+    @EnvironmentObject var wine: WineManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -42,14 +46,26 @@ private struct TweaksContent: View {
             picker("Theme", selection: Binding(get: { settings.dark ? "dark" : "light" },
                                                set: { settings.dark = ($0 == "dark") }),
                    options: [("light", "Light"), ("dark", "Dark")])
-            picker("Wallpaper", selection: Binding(get: { settings.wallpaper }, set: { settings.wallpaper = $0 }),
-                   options: [("sunset", "Sunset"), ("ocean", "Ocean"), ("forest", "Forest"), ("graphite", "Graphite")])
-            Toggle("Animate wallpaper", isOn: Binding(get: { settings.animateWallpaper }, set: { settings.animateWallpaper = $0 }))
-                .toggleStyle(.switch).controlSize(.mini).font(.system(size: 12))
 
             section("Library")
             picker("View", selection: Binding(get: { settings.view }, set: { settings.view = $0 }),
                    options: [("grid", "Grid"), ("list", "List")])
+
+            section("Wine Runtime")
+            HStack(alignment: .top, spacing: 8) {
+                Text(wine.runtime.statusText).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                Spacer()
+            }
+            Button {
+                wine.checkForUpdate(force: true)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 11))
+                    Text(wine.runtime.isBusy ? "Working…" : "Check for update").font(.system(size: 12, weight: .medium))
+                }
+            }
+            .disabled(wine.runtime.isBusy)
+            .controlSize(.small)
         }
         .padding(16)
     }

@@ -55,43 +55,67 @@ enum Theme {
     }
 }
 
-struct WallpaperSpec {
-    let base: [Color]          // gradient stops, top-left → bottom-right
-    let blobs: [Blob]
-    struct Blob { let x, y, r, o: Double; let c: Color }
+// MARK: - Opaque light/dark palette (no transparency)
+
+struct Palette {
+    let isDark: Bool
+    let appBG: Color          // window root
+    let sidebarBG: Color
+    let contentBG: Color
+    let bar: Color            // toolbar / status bar
+    let card: Color           // app tiles, list container
+    let control: Color        // search, segmented track, secondary buttons
+    let controlActive: Color  // segmented thumb / hovered control
+    let border: Color
+    let separator: Color
+    let text: Color
+    let textSecondary: Color
+
+    static func make(_ dark: Bool) -> Palette {
+        if dark {
+            return Palette(
+                isDark: true,
+                appBG: Color(hex: "#1b1b22"),
+                sidebarBG: Color(hex: "#17171e"),
+                contentBG: Color(hex: "#202028"),
+                bar: Color(hex: "#1d1d25"),
+                card: Color(hex: "#2a2a33"),
+                control: Color(hex: "#2e2e38"),
+                controlActive: Color(hex: "#3b3b47"),
+                border: Color.white.opacity(0.09),
+                separator: Color.white.opacity(0.08),
+                text: Color.white.opacity(0.92),
+                textSecondary: Color.white.opacity(0.55))
+        } else {
+            return Palette(
+                isDark: false,
+                appBG: Color(hex: "#e9eaf0"),
+                sidebarBG: Color(hex: "#e6e7ee"),
+                contentBG: Color(hex: "#f4f5f9"),
+                bar: Color(hex: "#eef0f5"),
+                card: Color(hex: "#ffffff"),
+                control: Color(hex: "#ffffff"),
+                controlActive: Color(hex: "#ffffff"),
+                border: Color.black.opacity(0.10),
+                separator: Color.black.opacity(0.07),
+                text: Color.black.opacity(0.88),
+                textSecondary: Color.black.opacity(0.5))
+        }
+    }
 }
 
-let WALLPAPERS: [String: WallpaperSpec] = [
-    "sunset": WallpaperSpec(
-        base: [Color(hex: "#ff7a59"), Color(hex: "#ff5e87"), Color(hex: "#b14df2"), Color(hex: "#4f3bdd")],
-        blobs: [
-            .init(x: 8,  y: 12, r: 38, o: 0.55, c: Color(hex: "#ffd166")),
-            .init(x: 78, y: 22, r: 32, o: 0.70, c: Color(hex: "#ff5e87")),
-            .init(x: 18, y: 78, r: 44, o: 0.60, c: Color(hex: "#8c52ff")),
-            .init(x: 86, y: 78, r: 28, o: 0.45, c: Color(hex: "#22d3ee")),
-        ]),
-    "ocean": WallpaperSpec(
-        base: [Color(hex: "#00d4ff"), Color(hex: "#2a78ff"), Color(hex: "#4f3bdd"), Color(hex: "#2a1f6b")],
-        blobs: [
-            .init(x: 10, y: 18, r: 36, o: 0.55, c: Color(hex: "#5eead4")),
-            .init(x: 82, y: 28, r: 30, o: 0.50, c: Color(hex: "#a78bfa")),
-            .init(x: 22, y: 80, r: 40, o: 0.55, c: Color(hex: "#3b82f6")),
-            .init(x: 88, y: 82, r: 28, o: 0.40, c: Color(hex: "#ec4899")),
-        ]),
-    "forest": WallpaperSpec(
-        base: [Color(hex: "#fef9c3"), Color(hex: "#84cc16"), Color(hex: "#14b8a6"), Color(hex: "#0f3460")],
-        blobs: [
-            .init(x: 12, y: 16, r: 36, o: 0.60, c: Color(hex: "#fde047")),
-            .init(x: 80, y: 22, r: 32, o: 0.55, c: Color(hex: "#22c55e")),
-            .init(x: 20, y: 78, r: 42, o: 0.50, c: Color(hex: "#0ea5e9")),
-            .init(x: 86, y: 80, r: 26, o: 0.45, c: Color(hex: "#a3e635")),
-        ]),
-    "graphite": WallpaperSpec(
-        base: [Color(hex: "#2a2a32"), Color(hex: "#1a1a22"), Color(hex: "#0f0f17")],
-        blobs: [
-            .init(x: 14, y: 18, r: 38, o: 0.45, c: Color(hex: "#7c3aed")),
-            .init(x: 82, y: 28, r: 30, o: 0.40, c: Color(hex: "#06b6d4")),
-            .init(x: 22, y: 80, r: 40, o: 0.40, c: Color(hex: "#ec4899")),
-            .init(x: 86, y: 82, r: 26, o: 0.35, c: Color(hex: "#22c55e")),
-        ]),
-]
+private struct PaletteKey: EnvironmentKey { static let defaultValue = Palette.make(false) }
+extension EnvironmentValues {
+    var palette: Palette {
+        get { self[PaletteKey.self] }
+        set { self[PaletteKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Solid (opaque) rounded surface with a hairline border.
+    func solidSurface<S: InsettableShape>(_ shape: S, _ p: Palette, fill: Color? = nil, border: Bool = true) -> some View {
+        self.background(fill ?? p.control, in: shape)
+            .overlay { if border { shape.strokeBorder(p.border, lineWidth: 0.5) } }
+    }
+}

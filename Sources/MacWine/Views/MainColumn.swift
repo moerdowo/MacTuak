@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainToolbar: View {
     @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var p
     let title: String
     let subtitle: String
     @Binding var query: String
@@ -11,22 +12,22 @@ struct MainToolbar: View {
         let accent = settings.accentColor
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 20, weight: .heavy)).tracking(-0.4)
-                Text(subtitle).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
+                Text(title).font(.system(size: 20, weight: .heavy)).tracking(-0.4).foregroundStyle(p.text)
+                Text(subtitle).font(.system(size: 11.5, weight: .medium)).foregroundStyle(p.textSecondary)
             }
             Spacer(minLength: 8)
 
             // search
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(p.textSecondary)
                 TextField("Search apps", text: $query).textFieldStyle(.plain).font(.system(size: 12.5))
                 if !query.isEmpty {
                     Button { query = "" } label: { Image(systemName: "xmark").font(.system(size: 11)) }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .buttonStyle(.plain).foregroundStyle(p.textSecondary)
                 }
             }
             .padding(.horizontal, 10).frame(width: 220, height: 30)
-            .liquidGlass(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .solidSurface(RoundedRectangle(cornerRadius: 10, style: .continuous), p)
 
             SegmentedControl(options: [
                 (value: "grid", label: "Grid", system: "square.grid.2x2"),
@@ -41,11 +42,12 @@ struct MainToolbar: View {
             }
         }
         .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 12)
-        .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.3)).frame(height: 0.5) }
+        .overlay(alignment: .bottom) { Rectangle().fill(p.separator).frame(height: 0.5) }
     }
 }
 
 struct ListHeaderRow: View {
+    @Environment(\.palette) private var p
     var body: some View {
         HStack(spacing: 14) {
             Color.clear.frame(width: 36)
@@ -54,18 +56,19 @@ struct ListHeaderRow: View {
             Color.clear.frame(width: 80)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(Color.primary.opacity(0.04))
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5) }
+        .background(p.isDark ? Color.black.opacity(0.15) : Color.black.opacity(0.03))
+        .overlay(alignment: .bottom) { Rectangle().fill(p.separator).frame(height: 0.5) }
     }
     private func cell(_ t: String, _ w: CGFloat?) -> some View {
         Text(t.uppercased()).font(.system(size: 10.5, weight: .bold)).tracking(0.4)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(p.textSecondary)
             .frame(width: w, alignment: .leading)
             .frame(maxWidth: w == nil ? .infinity : nil, alignment: .leading)
     }
 }
 
 struct EmptyStateView: View {
+    @Environment(\.palette) private var p
     let accent: Color
     let hasQuery: Bool
     var onAdd: () -> Void
@@ -78,10 +81,10 @@ struct EmptyStateView: View {
                 .overlay(Image(systemName: hasQuery ? "magnifyingglass" : "square.and.arrow.up")
                     .font(.system(size: 32, weight: .medium)).foregroundStyle(.white))
                 .shadow(color: accent.opacity(0.4), radius: 24, y: 8)
-            Text(hasQuery ? "No matches" : "No apps here yet").font(.system(size: 17, weight: .bold))
+            Text(hasQuery ? "No matches" : "No apps here yet").font(.system(size: 17, weight: .bold)).foregroundStyle(p.text)
             Text(hasQuery ? "Try a different search term, or remove the filter."
                           : "Drop a .exe or folder anywhere in the window — or click below to pick from your Mac.")
-                .font(.system(size: 13)).foregroundStyle(.secondary)
+                .font(.system(size: 13)).foregroundStyle(p.textSecondary)
                 .multilineTextAlignment(.center).frame(maxWidth: 320)
             if !hasQuery {
                 PillButton(primary: true, accent: accent, action: onAdd) {
@@ -98,35 +101,40 @@ struct EmptyStateView: View {
 struct StatusBar: View {
     @EnvironmentObject var library: LibraryStore
     @EnvironmentObject var wine: WineManager
+    @Environment(\.palette) private var p
 
     var body: some View {
         let running = library.runningCount
         let totalBytes = library.apps.reduce(Int64(0)) { $0 + $1.sizeBytes }
         HStack(spacing: 18) {
-            Label { Text(wine.installed ? wine.wineVersion : "Wine not installed") } icon: { Image(systemName: "wineglass") }
-                .foregroundStyle(wine.installed ? .secondary : Color(hex: "#ff9f0a"))
+            HStack(spacing: 6) {
+                if wine.runtime.isBusy { ProgressView().controlSize(.mini).scaleEffect(0.7).frame(width: 12, height: 12) }
+                else { Image(systemName: "wineglass") }
+                Text(wine.runtime.statusText)
+            }
+            .foregroundStyle(wine.runtime.isWarning ? Color(hex: "#ff9f0a") : p.textSecondary)
             divider
             Label("\(library.bottles.count) bottles · \(WineApp.humanSize(totalBytes))", systemImage: "internaldrive")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(p.textSecondary)
             divider
             HStack(spacing: 6) {
-                Circle().fill(running > 0 ? Color(hex: "#28c840") : Color.secondary.opacity(0.5))
+                Circle().fill(running > 0 ? Color(hex: "#28c840") : p.textSecondary.opacity(0.5))
                     .frame(width: 7, height: 7)
                     .shadow(color: running > 0 ? Color(hex: "#28c840").opacity(0.6) : .clear, radius: 4)
                 Text(running > 0 ? "\(running) running" : "Idle")
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(p.textSecondary)
             Spacer()
-            Text("\(library.apps.count) apps in library").foregroundStyle(.secondary)
+            Text("\(library.apps.count) apps in library").foregroundStyle(p.textSecondary)
         }
         .font(.system(size: 11.5, weight: .medium))
         .labelStyle(.titleAndIcon)
         .padding(.horizontal, 18).frame(height: 32)
-        .background(.regularMaterial.opacity(0.5))
-        .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.3)).frame(height: 0.5) }
+        .background(p.bar)
+        .overlay(alignment: .top) { Rectangle().fill(p.separator).frame(height: 0.5) }
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: 14)
+        Rectangle().fill(p.border).frame(width: 1, height: 14)
     }
 }

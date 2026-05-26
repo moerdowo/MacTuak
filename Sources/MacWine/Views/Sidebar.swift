@@ -3,6 +3,7 @@ import SwiftUI
 struct Sidebar: View {
     @EnvironmentObject var library: LibraryStore
     @EnvironmentObject var settings: Settings
+    @Environment(\.palette) private var p
     @Binding var section: String
     var onAdd: () -> Void
 
@@ -65,16 +66,16 @@ struct Sidebar: View {
                     Text("Add Application").font(.system(size: 12.5, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity).frame(height: 32)
+                .foregroundStyle(p.text)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.primary)
-            .background(Color.clear.liquidGlass(RoundedRectangle(cornerRadius: 9, style: .continuous), interactive: true))
+            .solidSurface(RoundedRectangle(cornerRadius: 9, style: .continuous), p)
             .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 14)
         }
         .frame(width: 240)
-        .background(.regularMaterial.opacity(0.6))
+        .background(p.sidebarBG)
         .overlay(alignment: .trailing) {
-            Rectangle().fill(.white.opacity(0.12)).frame(width: 0.5)
+            Rectangle().fill(p.separator).frame(width: 0.5)
         }
     }
 
