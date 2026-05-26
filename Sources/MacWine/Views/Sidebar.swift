@@ -13,14 +13,8 @@ struct Sidebar: View {
         let counts = library.counts
 
         VStack(spacing: 0) {
-            // header — leaves room for the native traffic lights at top-left
-            HStack(spacing: 6) {
-                Text("MacWine").font(.system(size: 13, weight: .bold))
-                Spacer()
-            }
-            .padding(.leading, 78)   // clears the traffic lights
-            .padding(.trailing, 14)
-            .frame(height: 52)
+            // empty header band — reserves room for the native traffic lights
+            Color.clear.frame(height: 38)
 
             ScrollView {
                 VStack(spacing: 0) {
