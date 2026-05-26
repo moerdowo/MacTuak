@@ -1,0 +1,68 @@
+MacWine — Third-Party Software Notices and Source Offer
+========================================================
+
+MacWine runs Windows applications using Wine and related open-source
+components. This file lists those components and how to obtain their source
+code, in fulfillment of their licenses.
+
+
+Wine
+----
+MacWine uses Wine to run Windows executables.
+
+  Copyright (c) 1993-2026 the Wine project authors (see Wine-AUTHORS.txt).
+  License: GNU Lesser General Public License, version 2.1 or later
+           (full text in Wine-COPYING.LIB.txt; notice in Wine-LICENSE.txt).
+
+The Wine runtime is not modified by MacWine; it is used as a separate,
+user-replaceable executable. You may replace the bundled/downloaded Wine
+binary with your own build.
+
+Source code:
+  • https://gitlab.winehq.org/wine/wine
+  • https://dl.winehq.org/wine/source/   (release tarballs by version)
+The exact Wine version in use is shown in the app under
+Tweaks → Wine Runtime, and recorded in:
+  ~/Library/Application Support/MacWine/Wine/installed.json
+
+WRITTEN OFFER: For any version distributed by MacWine, the complete
+corresponding source code is available at the URLs above for at least three
+years. Requests may also be sent to the project maintainer.
+
+
+Wine runtime builds
+-------------------
+The macOS Wine builds are produced by the Gcenx project and downloaded at
+runtime. MacWine does not modify them.
+  • https://github.com/Gcenx/macOS_Wine_builds   (build scripts + releases)
+
+These builds may include the following components, each under its own license:
+  • MoltenVK            — Apache License 2.0
+  • DXVK                — zlib/libpng License
+  • VKD3D / vkd3d-proton — LGPL-2.1 / zlib
+  • FAudio              — zlib License
+  • Wine Mono           — MIT License
+  • Wine Gecko          — Mozilla Public License 2.0
+  • MinGW-w64 runtime   — permissive (Zope/MIT-style) + public domain
+Full license texts ship inside the respective component directories of the
+Wine build, and are available from each project's upstream repository.
+
+
+winetricks
+----------
+Optional runtime components are installed via winetricks, downloaded at
+runtime on the user's machine.
+  Copyright (c) the winetricks authors. License: LGPL-2.1-or-later.
+  • https://github.com/Winetricks/winetricks
+
+IMPORTANT: winetricks may download proprietary Microsoft redistributables
+(Visual C++ runtimes, .NET, DirectX, Core Fonts) and other vendor software
+directly from their original sources onto your machine, under their own
+end-user license agreements. MacWine does not bundle or redistribute any of
+these components; they are fetched on demand at your request.
+
+
+Apple platform frameworks
+-------------------------
+MacWine itself is built with Apple's SwiftUI/AppKit frameworks under the
+Apple SDK license. The MacWine application code is © its authors.

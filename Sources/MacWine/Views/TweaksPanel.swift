@@ -5,6 +5,7 @@ struct TweaksButton: View {
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var wine: WineManager
     @Environment(\.palette) private var p
+    var onShowLicenses: () -> Void
     @State private var open = false
 
     var body: some View {
@@ -16,7 +17,7 @@ struct TweaksButton: View {
         .buttonStyle(.plain)
         .solidSurface(RoundedRectangle(cornerRadius: 10, style: .continuous), p)
         .popover(isPresented: $open, arrowEdge: .bottom) {
-            TweaksContent()
+            TweaksContent(onShowLicenses: { open = false; onShowLicenses() })
                 .environmentObject(settings).environmentObject(wine)
                 .environment(\.palette, p)
                 .frame(width: 280)
@@ -27,6 +28,7 @@ struct TweaksButton: View {
 private struct TweaksContent: View {
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var wine: WineManager
+    var onShowLicenses: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -71,6 +73,14 @@ private struct TweaksContent: View {
             }
             .disabled(wine.runtime.isBusy)
             .controlSize(.small)
+
+            section("About")
+            Button(action: onShowLicenses) {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text").font(.system(size: 11))
+                    Text("Licenses & acknowledgements").font(.system(size: 12, weight: .medium))
+                }
+            }.buttonStyle(.plain).controlSize(.small)
         }
         .padding(16)
     }

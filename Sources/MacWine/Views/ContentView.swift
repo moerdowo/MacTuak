@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var adding = false
     @State private var editing: WineApp?
     @State private var showBottles = false
+    @State private var showLicenses = false
     @State private var prefilledURL: URL?
     @State private var recentlyUninstalled: WineApp?
     @State private var undoTask: Task<Void, Never>?
@@ -57,6 +58,10 @@ struct ContentView: View {
                 BottleManagerSheet(accent: accent, onClose: { showBottles = false })
                     .zIndex(70)
             }
+            if showLicenses {
+                LicensesSheet(accent: accent, onClose: { showLicenses = false })
+                    .zIndex(75)
+            }
             if showOnboarding {
                 OnboardingOverlay(accent: accent, onContinue: { onboardingDismissed = true })
                     .zIndex(80)
@@ -81,7 +86,8 @@ struct ContentView: View {
         return VStack(spacing: 0) {
             MainToolbar(title: sectionTitle,
                         subtitle: "\(list.count) app\(list.count == 1 ? "" : "s")",
-                        query: $query, onAdd: openAdd)
+                        query: $query, onAdd: openAdd,
+                        onShowLicenses: { showLicenses = true })
 
             ScrollView {
                 if list.isEmpty {
