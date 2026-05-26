@@ -174,7 +174,7 @@ struct SidebarRow<Icon: View>: View {
             }
             .foregroundStyle(selected ? Color.white : p.text)
             .padding(.horizontal, 12)
-            .frame(height: 30)
+            .frame(maxWidth: .infinity, minHeight: 30, maxHeight: 30)
             .background {
                 if selected {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -186,6 +186,7 @@ struct SidebarRow<Icon: View>: View {
                         .fill(p.isDark ? Color.white.opacity(0.07) : Color.black.opacity(0.05))
                 }
             }
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 8)
