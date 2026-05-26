@@ -1,5 +1,6 @@
 .build/
 .swiftpm/
 MacWine.app/
+MacWine.dmg
 *.xcodeproj
 .DS_Store

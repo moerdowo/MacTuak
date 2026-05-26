@@ -4,6 +4,24 @@ A native macOS app for running Windows applications on your Mac, powered by [Win
 
 ![MacWine](docs/preview.png)
 
+## Install
+
+1. Download **MacWine.dmg** from the [latest release](https://github.com/moerdowo/MacWine/releases/latest).
+2. Open the DMG and drag **MacWine** into your **Applications** folder.
+
+### Opening a non-notarized app
+
+MacWine is **not notarized by Apple**, so Gatekeeper blocks it on first launch. This is expected — pick one of these (one-time):
+
+- **Right-click to open:** in Applications, Control-click (right-click) **MacWine** → **Open** → **Open**.
+- **If macOS still blocks it** (Sequoia/Tahoe): open **System Settings → Privacy & Security**, scroll to the *"MacWine was blocked"* message, click **Open Anyway**, then launch it again.
+- **Or via Terminal** — remove the quarantine flag, then open normally:
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/MacWine.app
+  ```
+
+After the first successful launch, MacWine opens normally like any other app. (Prefer to skip all this? Build it yourself — see [Build & run](#build--run) — locally built apps aren't quarantined.)
+
 ## Features
 
 - **App library** — add Windows apps by dragging a `.exe`/folder anywhere into the window, the **Add App** button, or by scanning a bottle's Program Files. Double-click to run.
