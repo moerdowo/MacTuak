@@ -111,6 +111,13 @@ struct ContentView: View {
             Label(app.favorite ? "Remove from Favorites" : "Add to Favorites",
                   systemImage: app.favorite ? "star.slash" : "star")
         }
+        Menu {
+            ForEach(Theme.categories.filter { $0 != "All" }, id: \.self) { cat in
+                Button { library.setCategory(app, cat) } label: {
+                    if app.category == cat { Label(cat, systemImage: "checkmark") } else { Text(cat) }
+                }
+            }
+        } label: { Label("Category", systemImage: "tag") }
         Button { showInFinder(app) } label: { Label("Show in Finder", systemImage: "folder") }
         Button { section = "bottle:\(app.bottle)" } label: { Label("Configure Wine bottle…", systemImage: "wineglass") }
         Divider()

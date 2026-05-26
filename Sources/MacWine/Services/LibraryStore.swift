@@ -70,6 +70,12 @@ final class LibraryStore: ObservableObject {
         save()
     }
 
+    func setCategory(_ app: WineApp, _ category: String) {
+        guard let i = apps.firstIndex(where: { $0.id == app.id }) else { return }
+        apps[i].category = category
+        save()
+    }
+
     func setRunning(_ id: String, _ running: Bool) {
         guard let i = apps.firstIndex(where: { $0.id == id }) else { return }
         apps[i].running = running
