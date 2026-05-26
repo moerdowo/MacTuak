@@ -75,6 +75,7 @@ final class WineManager: ObservableObject {
     private var activeVersion = ""
     private var activeIsSystem = false
     private var processes: [String: Process] = [:]
+    private var watchers: [String: Process] = [:]
 
     init() { bootstrap() }
 
@@ -270,6 +271,9 @@ final class WineManager: ObservableObject {
         proc.environment = env
         proc.currentDirectoryURL = URL(fileURLWithPath: (target as NSString).deletingLastPathComponent)
 
+        let wineserver = (wine as NSString).deletingLastPathComponent + "/wineserver"
+        let hasWineserver = FileManager.default.isExecutableFile(atPath: wineserver)
+
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = pipe
@@ -282,10 +286,15 @@ final class WineManager: ObservableObject {
             Task { @MainActor in
                 pipe.fileHandleForReading.readabilityHandler = nil
                 session.flush()
-                session.append("→ \(app.name) exited.")
-                session.phase = .exited
-                library.setRunning(app.id, false)
-                self.processes[app.id] = nil
+                // The wine launcher returns as soon as the app is handed off to
+                // wineserver — so only treat its exit as the app exiting when
+                // there's no server to wait on (see watchAppExit).
+                if !hasWineserver {
+                    session.append("→ \(app.name) exited.")
+                    session.phase = .exited
+                    library.setRunning(app.id, false)
+                    self.processes[app.id] = nil
+                }
             }
         }
 
@@ -297,11 +306,47 @@ final class WineManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 700_000_000)
                 if session.phase == .booting { session.phase = .running }
             }
+            if hasWineserver {
+                watchAppExit(app: app, wineserver: wineserver, prefix: prefix, session: session, library: library)
+            }
         } catch {
             session.phase = .error
             session.append("error: failed to start Wine — \(error.localizedDescription)")
         }
         return session
+    }
+
+    /// Waits on `wineserver -w` — it returns only once every process in the prefix
+    /// has quit — so the running indicator tracks the real Windows app rather than
+    /// the short-lived wine launcher process.
+    private func watchAppExit(app: WineApp, wineserver: String, prefix: URL, session: LaunchSession, library: LibraryStore) {
+        Task { @MainActor in
+            // Let the app register with the server before we start waiting.
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            let w = Process()
+            w.executableURL = URL(fileURLWithPath: wineserver)
+            w.arguments = ["-w"]
+            var env = ProcessInfo.processInfo.environment
+            env["WINEPREFIX"] = prefix.path
+            w.environment = env
+            w.standardOutput = FileHandle.nullDevice
+            w.standardError = FileHandle.nullDevice
+            w.terminationHandler = { _ in
+                Task { @MainActor in
+                    session.append("→ \(app.name) exited.")
+                    session.phase = .exited
+                    library.setRunning(app.id, false)
+                    self.processes[app.id] = nil
+                    self.watchers[app.id] = nil
+                }
+            }
+            do {
+                try w.run()
+                self.watchers[app.id] = w
+            } catch {
+                // Couldn't wait on the server; the launcher's handler will decide.
+            }
+        }
     }
 
     func terminate(appID: String, library: LibraryStore) {
