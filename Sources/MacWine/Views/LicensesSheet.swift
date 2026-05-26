@@ -65,6 +65,19 @@ struct LicensesSheet: View {
                                     .font(.system(size: 12, weight: .semibold)).tint(accent)
                             }
                         }
+
+                        section("Bundled tools") {
+                            Text("MacWine ships cabextract (GPLv3) and 7-Zip / p7zip (LGPL-2.1) as separate command-line helpers for winetricks.")
+                                .font(.system(size: 12)).foregroundStyle(p.text)
+                            HStack(spacing: 14) {
+                                docButton("cabextract (GPLv3)", file: "cabextract-COPYING")
+                                docButton("p7zip (LGPL)", file: "p7zip-License")
+                            }
+                            HStack(spacing: 14) {
+                                Link("cabextract source", destination: URL(string: "https://www.cabextract.org.uk/")!)
+                                Link("p7zip source", destination: URL(string: "https://sourceforge.net/projects/p7zip/")!)
+                            }.font(.system(size: 12, weight: .semibold)).tint(accent)
+                        }
                     }
                     .padding(20)
                 }

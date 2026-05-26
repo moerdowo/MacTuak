@@ -432,11 +432,21 @@ final class WineManager: ObservableObject {
         return out
     }
 
+    /// Directory of bundled CLI helpers (cabextract, 7za/7z) inside the .app.
+    var bundledToolsDir: URL? {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent("tools", isDirectory: true),
+              FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+
     private func baseEnv(prefix: URL, wine: String) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = prefix.path
         let wineBin = (wine as NSString).deletingLastPathComponent
-        env["PATH"] = "\(wineBin):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + (env["PATH"] ?? "")
+        var parts = [wineBin]
+        if let tools = bundledToolsDir?.path { parts.append(tools) }
+        parts += ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        env["PATH"] = parts.joined(separator: ":") + ":" + (env["PATH"] ?? "")
         return env
     }
 
@@ -611,8 +621,9 @@ final class WineManager: ObservableObject {
     }
 
     private func hasTool(_ name: String) -> Bool {
-        ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
-            .contains { FileManager.default.isExecutableFile(atPath: "\($0)/\(name)") }
+        var dirs = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+        if let t = bundledToolsDir?.path { dirs.insert(t, at: 0) }
+        return dirs.contains { FileManager.default.isExecutableFile(atPath: "\($0)/\(name)") }
     }
     private func brewPath() -> String? {
         ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]

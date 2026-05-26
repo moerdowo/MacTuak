@@ -14,6 +14,15 @@ cp "$BIN" "$APP/Contents/MacOS/MacWine"
 [ -f icon/AppIcon.icns ] && cp icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 [ -d licenses ] && cp -R licenses "$APP/Contents/Resources/licenses"
 
+# Bundled CLI helpers winetricks needs (cabextract, 7-Zip) — no Homebrew required.
+if [ -d vendor ]; then
+  mkdir -p "$APP/Contents/Resources/tools"
+  cp vendor/cabextract "$APP/Contents/Resources/tools/cabextract"
+  cp vendor/7za        "$APP/Contents/Resources/tools/7za"
+  ln -sf 7za           "$APP/Contents/Resources/tools/7z"
+  chmod +x "$APP/Contents/Resources/tools/cabextract" "$APP/Contents/Resources/tools/7za"
+fi
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

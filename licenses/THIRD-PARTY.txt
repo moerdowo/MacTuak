@@ -62,6 +62,29 @@ end-user license agreements. MacWine does not bundle or redistribute any of
 these components; they are fetched on demand at your request.
 
 
+Bundled CLI tools (used by winetricks)
+--------------------------------------
+MacWine ships two small command-line tools that winetricks needs to unpack
+components. They run as separate executables (mere aggregation) and do not
+affect the license of MacWine itself.
+
+cabextract  (version 1.11)
+  Copyright (c) Stuart Caie and contributors.
+  License: GNU General Public License v3 (full text in cabextract-COPYING.txt).
+  Source: https://www.cabextract.org.uk/  (includes libmspack)
+
+p7zip / 7-Zip  (7za, version 17.06)
+  Copyright (c) 1999-2016 Igor Pavlov; p7zip by the p7zip authors.
+  License: GNU LGPL-2.1-or-later, with the unRAR restriction (full text in
+           p7zip-License.txt).
+  Source: https://sourceforge.net/projects/p7zip/  and
+          https://github.com/p7zip-project/p7zip
+
+WRITTEN OFFER: complete corresponding source for the exact versions of
+cabextract and p7zip distributed with MacWine is available at the URLs above
+for at least three years.
+
+
 Apple platform frameworks
 -------------------------
 MacWine itself is built with Apple's SwiftUI/AppKit frameworks under the
