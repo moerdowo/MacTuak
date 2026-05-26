@@ -15,13 +15,6 @@ struct Sidebar: View {
         VStack(spacing: 0) {
             // header — leaves room for the native traffic lights at top-left
             HStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(LinearGradient(colors: [accent, accent.darkened(0.4)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 20, height: 20)
-                    .overlay(Image(systemName: "wineglass.fill")
-                        .font(.system(size: 11)).foregroundStyle(.white))
-                    .shadow(color: accent.opacity(0.33), radius: 2, y: 1)
                 Text("MacWine").font(.system(size: 13, weight: .bold))
                 Spacer()
             }
