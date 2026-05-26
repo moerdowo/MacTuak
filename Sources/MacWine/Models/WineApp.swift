@@ -16,14 +16,20 @@ struct WineApp: Identifiable, Codable, Equatable {
     var favorite: Bool
     var exePath: String         // absolute path to the .exe (or folder)
     var lastRun: Date?
+    var iconFileName: String? = nil   // optional custom icon stored in Icons/
 
     // Transient — not persisted; reflects live process state.
     var running: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id, name, publisher, version, bottle, arch, sizeBytes
-        case category, glyph, g1, g2, favorite, exePath, lastRun
+        case category, glyph, g1, g2, favorite, exePath, lastRun, iconFileName
     }
+
+    static var iconsDirectory: URL {
+        LibraryStore.supportDirectory.appendingPathComponent("Icons", isDirectory: true)
+    }
+    var iconURL: URL? { iconFileName.map { Self.iconsDirectory.appendingPathComponent($0) } }
 
     var sizeDisplay: String { Self.humanSize(sizeBytes) }
 

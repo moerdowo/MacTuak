@@ -1,6 +1,20 @@
 import SwiftUI
+import AppKit
 
-// MARK: - App icon (fake .exe tile: gradient + glyph + window-pane mark)
+/// Tiny path-keyed cache so icon files aren't re-read from disk every render.
+/// Edits write a fresh filename, so a stable path key is safe.
+enum IconCache {
+    nonisolated(unsafe) static let cache = NSCache<NSString, NSImage>()
+    static func image(at url: URL) -> NSImage? {
+        let key = url.path as NSString
+        if let c = cache.object(forKey: key) { return c }
+        guard FileManager.default.fileExists(atPath: url.path), let img = NSImage(contentsOf: url) else { return nil }
+        cache.setObject(img, forKey: key)
+        return img
+    }
+}
+
+// MARK: - App icon (custom image, or fake .exe tile: gradient + glyph + window-pane mark)
 
 struct AppIconView: View {
     let app: WineApp
@@ -8,9 +22,27 @@ struct AppIconView: View {
     var radius: CGFloat = 16
 
     var body: some View {
+        let g2 = Color(hex: app.g2)
+        Group {
+            if let url = app.iconURL, let img = IconCache.image(at: url) {
+                Image(nsImage: img).resizable().interpolation(.high).scaledToFill()
+            } else {
+                gradientTile
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .strokeBorder(.white.opacity(0.35), lineWidth: 0.5)
+        )
+        .shadow(color: (app.iconFileName == nil ? g2 : .black).opacity(0.33), radius: 6, y: 4)
+    }
+
+    private var gradientTile: some View {
         let g1 = Color(hex: app.g1)
         let g2 = Color(hex: app.g2)
-        ZStack {
+        return ZStack {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(LinearGradient(colors: [g1, g2], startPoint: .topLeading, endPoint: .bottomTrailing))
 
@@ -31,13 +63,6 @@ struct AppIconView: View {
                 .padding(size * 0.08)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .strokeBorder(.white.opacity(0.35), lineWidth: 0.5)
-        )
-        .shadow(color: g2.opacity(0.33), radius: 6, y: 4)
     }
 }
 

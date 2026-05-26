@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 /// The persisted app library + bottles. Source of truth for the grid/list.
 @MainActor
@@ -74,6 +75,34 @@ final class LibraryStore: ObservableObject {
         guard let i = apps.firstIndex(where: { $0.id == app.id }) else { return }
         apps[i].category = category
         save()
+    }
+
+    /// Replaces an app in place (used by the Edit Info sheet) and persists.
+    func update(_ updated: WineApp) {
+        guard let i = apps.firstIndex(where: { $0.id == updated.id }) else { return }
+        var u = updated
+        u.running = apps[i].running   // preserve transient live state
+        apps[i] = u
+        save()
+    }
+
+    // MARK: - Custom icons
+
+    /// Writes an image into the Icons dir under a fresh filename and returns it.
+    func writeIcon(_ image: NSImage, appID: String) -> String? {
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return nil }
+        let dir = WineApp.iconsDirectory
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = "\(appID)-\(UUID().uuidString.prefix(8)).png"
+        do { try png.write(to: dir.appendingPathComponent(name), options: .atomic) } catch { return nil }
+        return name
+    }
+
+    func deleteIcon(named name: String?) {
+        guard let name else { return }
+        try? FileManager.default.removeItem(at: WineApp.iconsDirectory.appendingPathComponent(name))
     }
 
     func setRunning(_ id: String, _ running: Bool) {

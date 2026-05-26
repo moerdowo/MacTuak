@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var query = ""
     @State private var launch: LaunchSession?
     @State private var adding = false
+    @State private var editing: WineApp?
     @State private var prefilledURL: URL?
     @State private var recentlyUninstalled: WineApp?
     @State private var undoTask: Task<Void, Never>?
@@ -46,11 +47,16 @@ struct ContentView: View {
                             onAdded: { _ in })
                     .zIndex(60)
             }
+            if let editing {
+                EditAppSheet(app: editing, accent: accent, onClose: { self.editing = nil })
+                    .zIndex(60)
+            }
         }
         .environment(\.palette, p)
         .preferredColorScheme(settings.dark ? .dark : .light)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: launch != nil)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: adding)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editing != nil)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: recentlyUninstalled)
         .onDrop(of: [.fileURL], isTargeted: $draggingFile) { providers in handleWindowDrop(providers) }
         .ignoresSafeArea()
@@ -107,6 +113,7 @@ struct ContentView: View {
         Button { runApp(app) } label: { Label("Run", systemImage: "play.fill") }
         Button { runApp(app, admin: true) } label: { Label("Run as administrator", systemImage: "sparkles") }
         Divider()
+        Button { editing = app } label: { Label("Edit Info…", systemImage: "info.circle") }
         Button { library.toggleFavorite(app) } label: {
             Label(app.favorite ? "Remove from Favorites" : "Add to Favorites",
                   systemImage: app.favorite ? "star.slash" : "star")

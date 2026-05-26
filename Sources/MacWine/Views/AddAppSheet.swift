@@ -17,6 +17,15 @@ struct AddAppSheet: View {
     @State private var bottle = "win10-x64"
     @State private var dragHover = false
     @State private var pickedURL: URL?
+    @State private var iconChoice: IconChoice = .removed
+
+    private var previewApp: WineApp {
+        let base = name.isEmpty ? "App" : name.replacingOccurrences(of: ".exe", with: "", options: .caseInsensitive)
+        let (g1, g2) = Theme.gradient(for: base)
+        return WineApp(id: "preview", name: base, publisher: "", version: "", bottle: bottle, arch: "x64",
+                       sizeBytes: 0, category: "Utilities", glyph: String(base.prefix(2)).uppercased(),
+                       g1: g1, g2: g2, favorite: false, exePath: "", lastRun: nil)
+    }
 
     var body: some View {
         ZStack {
@@ -68,6 +77,19 @@ struct AddAppSheet: View {
                         .foregroundStyle(dragHover ? accent : Color.primary.opacity(0.18)))
                     .onDrop(of: [.fileURL], isTargeted: $dragHover) { providers in
                         loadDrop(providers); return true
+                    }
+
+                    // icon
+                    HStack(spacing: 14) {
+                        IconWell(choice: $iconChoice, existingURL: nil, accent: accent, size: 64) {
+                            AppIconView(app: previewApp, size: 64, radius: 16)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("App Icon").font(.system(size: 13, weight: .semibold)).foregroundStyle(p.text)
+                            Text("Optional — pick a PNG/JPG image, or keep the generated icon.")
+                                .font(.system(size: 11.5)).foregroundStyle(p.textSecondary)
+                        }
+                        Spacer()
                     }
 
                     // fields
@@ -170,6 +192,9 @@ struct AddAppSheet: View {
                           sizeBytes: 0, category: "Utilities",
                           glyph: String(name.prefix(2)).uppercased(), g1: g1, g2: g2,
                           favorite: false, exePath: (path as NSString).expandingTildeInPath, lastRun: nil)
+        }
+        if case .custom(let img) = iconChoice {
+            app.iconFileName = library.writeIcon(img, appID: app.id)
         }
         library.add(app)
         onAdded(app)
