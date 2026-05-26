@@ -55,9 +55,21 @@ final class LibraryStore: ObservableObject {
 
     @discardableResult
     func importFile(at url: URL, bottle: String) -> WineApp {
-        let app = WineApp.imported(from: url, bottle: bottle)
+        var app = WineApp.imported(from: url, bottle: bottle)
+        autoDetect(&app)
         add(app)
         return app
+    }
+
+    /// Reads the .exe's PE header to set arch and (if no custom icon yet) extract
+    /// the embedded icon.
+    func autoDetect(_ app: inout WineApp) {
+        guard app.exePath.lowercased().hasSuffix(".exe") else { return }
+        if let arch = PEInfo.architecture(of: app.exePath) { app.arch = arch }
+        if app.iconFileName == nil, let img = PEInfo.icon(of: app.exePath),
+           let name = writeIcon(img, appID: app.id) {
+            app.iconFileName = name
+        }
     }
 
     func remove(_ app: WineApp) {
@@ -115,6 +127,40 @@ final class LibraryStore: ObservableObject {
     func ensureBottle(_ id: String, label: String? = nil, wineVersion: String = "9.0") {
         guard !bottles.contains(where: { $0.id == id }) else { return }
         bottles.append(Bottle(id: id, label: label ?? id, wineVersion: wineVersion))
+        save()
+    }
+
+    @discardableResult
+    func addBottle(label: String, windowsVersion: String, arch: String) -> Bottle {
+        let base = label.lowercased().replacingOccurrences(of: " ", with: "-")
+            .filter { $0.isLetter || $0.isNumber || $0 == "-" }
+        var id = base.isEmpty ? "bottle" : base
+        var n = 1
+        while bottles.contains(where: { $0.id == id }) { n += 1; id = "\(base)-\(n)" }
+        let b = Bottle(id: id, label: label, wineVersion: "9.0", windowsVersion: windowsVersion, arch: arch)
+        bottles.append(b)
+        save()
+        return b
+    }
+
+    func updateBottle(_ bottle: Bottle) {
+        guard let i = bottles.firstIndex(where: { $0.id == bottle.id }) else { return }
+        bottles[i] = bottle
+        save()
+    }
+
+    func renameBottle(_ id: String, to label: String) {
+        guard let i = bottles.firstIndex(where: { $0.id == id }) else { return }
+        bottles[i].label = label
+        save()
+    }
+
+    /// Removes a bottle entry. Apps assigned to it are reassigned to the first
+    /// remaining bottle. (The on-disk prefix is deleted separately by WineManager.)
+    func deleteBottle(_ id: String) {
+        bottles.removeAll { $0.id == id }
+        let fallback = bottles.first?.id ?? "win10-x64"
+        for i in apps.indices where apps[i].bottle == id { apps[i].bottle = fallback }
         save()
     }
 

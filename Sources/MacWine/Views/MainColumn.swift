@@ -29,6 +29,21 @@ struct MainToolbar: View {
             .padding(.horizontal, 10).frame(width: 220, height: 30)
             .solidSurface(RoundedRectangle(cornerRadius: 10, style: .continuous), p)
 
+            Menu {
+                Picker("Sort by", selection: Binding(get: { settings.sort }, set: { settings.sort = $0 })) {
+                    Text("Name").tag("name")
+                    Text("Last run").tag("recent")
+                    Text("Size").tag("size")
+                    Text("Recently added").tag("added")
+                }
+            } label: {
+                Image(systemName: "arrow.up.arrow.down").font(.system(size: 13, weight: .medium)).foregroundStyle(p.text)
+                    .frame(width: 30, height: 30)
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .background(p.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(p.border, lineWidth: 0.5))
+
             SegmentedControl(options: [
                 (value: "grid", label: "Grid", system: "square.grid.2x2"),
                 (value: "list", label: "List", system: "list.bullet"),

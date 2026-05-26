@@ -52,6 +52,11 @@ private struct TweaksContent: View {
                    options: [("grid", "Grid"), ("list", "List")])
 
             section("Wine Runtime")
+            picker("Channel", selection: Binding(get: { settings.wineChannel }, set: { newValue in
+                settings.wineChannel = newValue
+                wine.channel = newValue
+                wine.checkForUpdate(force: true)
+            }), options: [("stable", "Stable"), ("staging", "Staging"), ("devel", "Devel")])
             HStack(alignment: .top, spacing: 8) {
                 Text(wine.runtime.statusText).font(.system(size: 11.5)).foregroundStyle(.secondary)
                 Spacer()

@@ -14,6 +14,8 @@ struct EditAppSheet: View {
     @State private var path: String
     @State private var bottle: String
     @State private var category: String
+    @State private var arch: String
+    @State private var opts: LaunchOptions
     @State private var iconChoice: IconChoice
 
     init(app: WineApp, accent: Color, onClose: @escaping () -> Void) {
@@ -24,6 +26,8 @@ struct EditAppSheet: View {
         _path = State(initialValue: app.exePath)
         _bottle = State(initialValue: app.bottle)
         _category = State(initialValue: app.category)
+        _arch = State(initialValue: app.arch)
+        _opts = State(initialValue: app.opts)
         _iconChoice = State(initialValue: app.iconFileName == nil ? .removed : .keepExisting)
     }
 
@@ -59,10 +63,17 @@ struct EditAppSheet: View {
                         IconWell(choice: $iconChoice, existingURL: app.iconURL, accent: accent, size: 64) {
                             AppIconView(app: noIconApp, size: 64, radius: 16)
                         }
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("App Icon").font(.system(size: 13, weight: .semibold)).foregroundStyle(p.text)
-                            Text("Pick a PNG/JPG image, or remove to use the generated icon.")
+                            Text("Pick a PNG/JPG, remove for the generated icon, or pull it from the .exe.")
                                 .font(.system(size: 11.5)).foregroundStyle(p.textSecondary)
+                            Button {
+                                if let img = PEInfo.icon(of: (path as NSString).expandingTildeInPath) {
+                                    iconChoice = .custom(img)
+                                }
+                            } label: {
+                                Label("Extract from .exe", systemImage: "wand.and.stars").font(.system(size: 11.5, weight: .semibold))
+                            }.buttonStyle(.plain).foregroundStyle(accent)
                         }
                         Spacer()
                     }
@@ -92,7 +103,14 @@ struct EditAppSheet: View {
                                 ForEach(Theme.categories.filter { $0 != "All" }, id: \.self) { Text($0).tag($0) }
                             }.labelsHidden().controlSize(.small)
                         }
+                        GridRow {
+                            Text("Arch").font(.system(size: 12, weight: .semibold)).foregroundStyle(p.textSecondary)
+                            Picker("", selection: $arch) { Text("64-bit").tag("x64"); Text("32-bit").tag("x86") }
+                                .labelsHidden().pickerStyle(.segmented).controlSize(.small).fixedSize()
+                        }
                     }
+
+                    launchOptions
                 }
                 .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 14)
 
@@ -124,6 +142,38 @@ struct EditAppSheet: View {
         }
     }
 
+    private var launchOptions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("LAUNCH OPTIONS").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundStyle(p.textSecondary)
+                .padding(.top, 4)
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+                field("Arguments", text: $opts.arguments, placeholder: "--fullscreen")
+                field("Working dir", text: $opts.workingDir, placeholder: "(defaults to .exe folder)")
+                field("WINEDEBUG", text: $opts.winedebug, placeholder: "-all to silence")
+                GridRow {
+                    Text("Virtual desktop").font(.system(size: 12, weight: .semibold)).foregroundStyle(p.textSecondary)
+                    TextField("off — e.g. 1280x720", text: $opts.virtualDesktop)
+                        .textFieldStyle(.plain).font(.system(size: 13)).padding(.horizontal, 10).frame(height: 28)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(p.control))
+                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(p.border, lineWidth: 0.5))
+                }
+                GridRow {
+                    Text("Environment").font(.system(size: 12, weight: .semibold)).foregroundStyle(p.textSecondary)
+                    TextField("KEY=VALUE per line", text: $opts.environment, axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.plain).font(.system(size: 13)).padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(p.control))
+                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(p.border, lineWidth: 0.5))
+                }
+            }
+            HStack(spacing: 18) {
+                Toggle("Esync", isOn: $opts.esync).toggleStyle(.checkbox).font(.system(size: 12))
+                Toggle("Retina / HiDPI", isOn: $opts.retina).toggleStyle(.checkbox).font(.system(size: 12))
+                Spacer()
+            }
+        }
+    }
+
     private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {
         GridRow {
             Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(p.textSecondary)
@@ -151,6 +201,8 @@ struct EditAppSheet: View {
         u.exePath = (path as NSString).expandingTildeInPath
         u.bottle = bottle
         u.category = category
+        u.arch = arch
+        u.opts = opts
         switch iconChoice {
         case .custom(let img):
             library.deleteIcon(named: u.iconFileName)

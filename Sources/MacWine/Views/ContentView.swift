@@ -12,10 +12,12 @@ struct ContentView: View {
     @State private var launch: LaunchSession?
     @State private var adding = false
     @State private var editing: WineApp?
+    @State private var showBottles = false
     @State private var prefilledURL: URL?
     @State private var recentlyUninstalled: WineApp?
     @State private var undoTask: Task<Void, Never>?
     @State private var draggingFile = false
+    @State private var onboardingDismissed = false
 
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 220), spacing: 12)]
 
@@ -26,7 +28,7 @@ struct ContentView: View {
             p.appBG.ignoresSafeArea()
 
             HStack(spacing: 0) {
-                Sidebar(section: $section, onAdd: openAdd)
+                Sidebar(section: $section, onAdd: openAdd, onManageBottles: { showBottles = true })
                 mainColumn(accent: accent)
             }
 
@@ -51,7 +53,16 @@ struct ContentView: View {
                 EditAppSheet(app: editing, accent: accent, onClose: { self.editing = nil })
                     .zIndex(60)
             }
+            if showBottles {
+                BottleManagerSheet(accent: accent, onClose: { showBottles = false })
+                    .zIndex(70)
+            }
+            if showOnboarding {
+                OnboardingOverlay(accent: accent, onContinue: { onboardingDismissed = true })
+                    .zIndex(80)
+            }
         }
+        .onAppear { wine.channel = settings.wineChannel }
         .environment(\.palette, p)
         .preferredColorScheme(settings.dark ? .dark : .light)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: launch != nil)
@@ -112,8 +123,14 @@ struct ContentView: View {
     private func menu(for app: WineApp) -> some View {
         Button { runApp(app) } label: { Label("Run", systemImage: "play.fill") }
         Button { runApp(app, admin: true) } label: { Label("Run as administrator", systemImage: "sparkles") }
+        if app.running {
+            Button(role: .destructive) { wine.forceQuit(app: app, library: library) } label: {
+                Label("Force Quit (bottle)", systemImage: "stop.fill")
+            }
+        }
         Divider()
         Button { editing = app } label: { Label("Edit Info…", systemImage: "info.circle") }
+        Button { exportApp(app) } label: { Label("Add to Applications", systemImage: "square.and.arrow.down.on.square") }
         Button { library.toggleFavorite(app) } label: {
             Label(app.favorite ? "Remove from Favorites" : "Add to Favorites",
                   systemImage: app.favorite ? "star.slash" : "star")
@@ -153,6 +170,14 @@ struct ContentView: View {
         if !q.isEmpty {
             list = list.filter { ($0.name + $0.publisher + $0.category).lowercased().contains(q) }
         }
+        if !(kind == "library" && val == "Recent") {
+            switch settings.sort {
+            case "recent": list.sort { $0.recencyScore < $1.recencyScore }
+            case "size":   list.sort { $0.sizeBytes > $1.sizeBytes }
+            case "added":  list.sort { ($0.addedAt ?? .distantPast) > ($1.addedAt ?? .distantPast) }
+            default:       list.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            }
+        }
         return list
     }
 
@@ -169,8 +194,25 @@ struct ContentView: View {
 
     private func openAdd() { adding = true }
 
+    private var showOnboarding: Bool {
+        !onboardingDismissed && library.apps.isEmpty &&
+        [.detecting, .needsDownload, .downloading, .extracting, .installing].contains(wine.runtime.kind)
+    }
+
     private func runApp(_ app: WineApp, admin: Bool = false) {
         launch = wine.launch(app: app, admin: admin, library: library)
+    }
+
+    private func exportApp(_ app: WineApp) {
+        guard let winePath = wine.winePath else { return }
+        let prefix = wine.prefixURL(for: app.bottle)
+        Task.detached {
+            guard let url = try? AppExporter.export(app: app, winePath: winePath, prefix: prefix) else { return }
+            await MainActor.run {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                Notifier.notify("Added to Applications", "\(app.name) launcher created in ~/Applications.")
+            }
+        }
     }
 
     private func uninstall(_ app: WineApp) {

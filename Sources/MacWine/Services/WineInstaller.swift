@@ -13,25 +13,27 @@ enum WineInstaller {
     private static let releasesAPI = URL(string:
         "https://api.github.com/repos/Gcenx/macOS_Wine_builds/releases?per_page=50")!
 
-    /// Newest release that ships a `wine-stable-*-osx64.tar.xz` asset.
-    static func latestStable() async throws -> Release {
+    /// Newest release that ships a `wine-<channel>-*-osx64.tar.xz` asset.
+    /// channel ∈ {stable, staging, devel}.
+    static func latest(channel: String) async throws -> Release {
         var req = URLRequest(url: releasesAPI)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("MacWine", forHTTPHeaderField: "User-Agent")
         req.timeoutInterval = 30
         let (data, _) = try await URLSession.shared.data(for: req)
         let releases = (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+        let key = "wine-\(channel.lowercased())"
         for rel in releases {
             let tag = rel["tag_name"] as? String ?? ""
             let assets = rel["assets"] as? [[String: Any]] ?? []
             if let asset = assets.first(where: {
                 let n = ($0["name"] as? String ?? "").lowercased()
-                return n.contains("stable") && n.hasSuffix(".tar.xz")
+                return n.hasPrefix(key) && n.hasSuffix(".tar.xz")
             }), let s = asset["browser_download_url"] as? String, let url = URL(string: s) {
                 return Release(version: tag, assetName: asset["name"] as? String ?? "", url: url)
             }
         }
-        throw err("No stable Wine build found in releases.")
+        throw err("No \(channel) Wine build found in releases.")
     }
 
     /// Downloads `url` to a temp file, reporting 0…1 progress.

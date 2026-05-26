@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct LaunchOverlay: View {
     @ObservedObject var session: LaunchSession
@@ -72,6 +74,11 @@ struct LaunchOverlay: View {
                 HStack {
                     Text(footerText).font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
                     Spacer()
+                    Button(action: saveLog) {
+                        Text("Save Log…").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                            .padding(.horizontal, 12).frame(height: 28)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(0.08)))
+                    }.buttonStyle(.plain)
                     Button(action: onClose) {
                         Text(session.phase == .running ? "Hide" : "Close")
                             .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
@@ -92,6 +99,15 @@ struct LaunchOverlay: View {
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.14), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.55), radius: 40, y: 24)
             .transition(.scale(scale: 0.92).combined(with: .opacity))
+        }
+    }
+
+    private func saveLog() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(session.app.name).log"
+        panel.allowedContentTypes = [.plainText, .log]
+        if panel.runModal() == .OK, let url = panel.url {
+            try? session.lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
         }
     }
 

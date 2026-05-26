@@ -6,6 +6,7 @@ struct Sidebar: View {
     @Environment(\.palette) private var p
     @Binding var section: String
     var onAdd: () -> Void
+    var onManageBottles: () -> Void
 
     var body: some View {
         let accent = settings.accentColor
@@ -46,7 +47,16 @@ struct Sidebar: View {
                         }
                     }
 
-                    SidebarSectionHeader(text: "Wine Bottles")
+                    HStack {
+                        SidebarSectionHeader(text: "Wine Bottles")
+                        Spacer()
+                        Button(action: onManageBottles) {
+                            Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(accent)
+                        }
+                        .buttonStyle(.plain).help("Manage bottles")
+                        .padding(.trailing, 16).padding(.top, 8)
+                    }
                     ForEach(library.bottles) { b in
                         SidebarRow(icon: { Image(systemName: "wineglass").font(.system(size: 13)) },
                                    label: b.shortLabel,
@@ -55,6 +65,15 @@ struct Sidebar: View {
                             section = "bottle:\(b.id)"
                         }
                     }
+                    Button(action: onManageBottles) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "gearshape").font(.system(size: 11))
+                            Text("Manage Bottles…").font(.system(size: 12, weight: .medium))
+                            Spacer()
+                        }
+                        .foregroundStyle(p.textSecondary)
+                        .padding(.horizontal, 20).padding(.vertical, 6)
+                    }.buttonStyle(.plain)
                 }
                 .padding(.bottom, 8)
             }

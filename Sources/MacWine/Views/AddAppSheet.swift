@@ -191,8 +191,10 @@ struct AddAppSheet: View {
                           publisher: "Custom", version: "1.0", bottle: bottle, arch: "x64",
                           sizeBytes: 0, category: "Utilities",
                           glyph: String(name.prefix(2)).uppercased(), g1: g1, g2: g2,
-                          favorite: false, exePath: (path as NSString).expandingTildeInPath, lastRun: nil)
+                          favorite: false, exePath: (path as NSString).expandingTildeInPath, lastRun: nil,
+                          addedAt: Date())
         }
+        library.autoDetect(&app)   // arch + embedded icon from the PE header
         if case .custom(let img) = iconChoice {
             app.iconFileName = library.writeIcon(img, appID: app.id)
         }

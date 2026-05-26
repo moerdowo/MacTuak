@@ -1,5 +1,16 @@
 import Foundation
 
+/// Per-app launch configuration.
+struct LaunchOptions: Codable, Equatable {
+    var arguments: String = ""
+    var workingDir: String = ""
+    var environment: String = ""    // "KEY=VALUE" per line
+    var winedebug: String = ""      // e.g. "-all" to silence, "" for default
+    var esync: Bool = true
+    var retina: Bool = false
+    var virtualDesktop: String = "" // "" = off, else "1280x720"
+}
+
 /// A Windows application registered in the library. Persisted to JSON.
 struct WineApp: Identifiable, Codable, Equatable {
     var id: String
@@ -17,13 +28,22 @@ struct WineApp: Identifiable, Codable, Equatable {
     var exePath: String         // absolute path to the .exe (or folder)
     var lastRun: Date?
     var iconFileName: String? = nil   // optional custom icon stored in Icons/
+    var options: LaunchOptions? = nil // optional for back-compat
+    var addedAt: Date? = nil
 
     // Transient — not persisted; reflects live process state.
     var running: Bool = false
 
+    /// Effective launch options (never nil at use sites).
+    var opts: LaunchOptions {
+        get { options ?? LaunchOptions() }
+        set { options = newValue }
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, name, publisher, version, bottle, arch, sizeBytes
         case category, glyph, g1, g2, favorite, exePath, lastRun, iconFileName
+        case options, addedAt
     }
 
     static var iconsDirectory: URL {
@@ -90,7 +110,8 @@ struct WineApp: Identifiable, Codable, Equatable {
             g1: g1, g2: g2,
             favorite: false,
             exePath: url.path,
-            lastRun: nil
+            lastRun: nil,
+            addedAt: Date()
         )
     }
 

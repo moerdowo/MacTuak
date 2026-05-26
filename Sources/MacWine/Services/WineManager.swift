@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 /// Live state for one launch — the LaunchOverlay binds to this and shows the
 /// real stdout/stderr stream coming back from Wine.
@@ -35,6 +36,30 @@ final class LaunchSession: ObservableObject {
     }
 }
 
+/// Generic streaming console for bottle tools (wineboot, winetricks, winecfg…).
+@MainActor
+final class ConsoleSession: ObservableObject, Identifiable {
+    let id = UUID()
+    let title: String
+    let subtitle: String
+    @Published var lines: [String] = []
+    @Published var phase: LaunchSession.Phase = .booting
+    private var buffer = ""
+
+    init(title: String, subtitle: String) { self.title = title; self.subtitle = subtitle }
+
+    func ingest(_ text: String) {
+        buffer += text
+        while let nl = buffer.firstIndex(of: "\n") {
+            append(String(buffer[buffer.startIndex..<nl]))
+            buffer.removeSubrange(buffer.startIndex...nl)
+        }
+        if phase == .booting { phase = .running }
+    }
+    func append(_ line: String) { lines.append(line); if lines.count > 600 { lines.removeFirst(lines.count - 600) } }
+    func flush() { if !buffer.isEmpty { append(buffer); buffer = "" } }
+}
+
 // MARK: - Runtime state (surfaced in the status bar / tweaks)
 
 struct RuntimeState: Equatable, Sendable {
@@ -63,6 +88,7 @@ struct RuntimeState: Equatable, Sendable {
 private struct InstalledInfo: Codable, Sendable {
     var version: String
     var binary: String
+    var channel: String? = nil
 }
 
 /// Manages a self-updating, app-owned (bundled) stable Wine runtime and runs
@@ -77,7 +103,12 @@ final class WineManager: ObservableObject {
     private var processes: [String: Process] = [:]
     private var watchers: [String: Process] = [:]
 
+    /// Wine channel to track (stable/staging/devel). Set from Settings.
+    var channel = "stable"
+
     init() { bootstrap() }
+
+    var logsDirectory: URL { LibraryStore.supportDirectory.appendingPathComponent("Logs", isDirectory: true) }
 
     // MARK: - Paths
 
@@ -123,13 +154,14 @@ final class WineManager: ObservableObject {
         guard !runtime.isBusy else { return }
         let haveActive = winePath != nil
         let currentInfo = Self.loadInfo()
+        let channel = self.channel
 
         Task.detached(priority: .utility) {
             do {
-                let release = try await WineInstaller.latestStable()
+                let release = try await WineInstaller.latest(channel: channel)
 
-                // Already on the latest managed build?
-                if let info = currentInfo, info.version == release.version,
+                // Already on the latest managed build for this channel?
+                if let info = currentInfo, info.version == release.version, (info.channel ?? "stable") == channel,
                    FileManager.default.isExecutableFile(atPath: info.binary) {
                     await self.setActive(path: info.binary, version: info.version, system: false, kind: .ready)
                     return
@@ -157,7 +189,7 @@ final class WineManager: ObservableObject {
                     throw NSError(domain: "MacWine", code: 4, userInfo: [NSLocalizedDescriptionKey: "wine binary missing after install"])
                 }
                 try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin)
-                Self.saveInfo(InstalledInfo(version: release.version, binary: bin))
+                Self.saveInfo(InstalledInfo(version: release.version, binary: bin, channel: channel))
                 try? fm.removeItem(at: archive)
 
                 await self.setActive(path: bin, version: release.version, system: false, kind: .ready)
@@ -247,12 +279,22 @@ final class WineManager: ObservableObject {
 
         let prefix = prefixURL(for: app.bottle)
         try? FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
+        let opts = app.opts
         let target = resolveExecutable(app.exePath)
+
+        applyRetina(opts.retina, wine: wine, prefix: prefix)
+
+        let isMSI = (target ?? app.exePath).lowercased().hasSuffix(".msi")
+        var args: [String] = []
+        if !opts.virtualDesktop.isEmpty { args += ["explorer", "/desktop=MacWine,\(opts.virtualDesktop)"] }
+        if isMSI { args += ["msiexec", "/i", target ?? app.exePath] }
+        else if let target { args += [target] }
+        args += tokenize(opts.arguments)
 
         session.append("$ \(wine) --version")
         session.append("Wine \(activeVersion)")
         session.append("$ WINEPREFIX=\(prefix.path) \\")
-        session.append("  wine \"\(target ?? app.exePath)\"\(admin ? "  # elevated" : "")")
+        session.append("  wine \(args.map { "\"\($0)\"" }.joined(separator: " "))\(admin ? "  # elevated" : "")")
 
         guard let target, FileManager.default.fileExists(atPath: target) else {
             session.phase = .error
@@ -262,14 +304,23 @@ final class WineManager: ObservableObject {
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: wine)
-        proc.arguments = [target]
+        proc.arguments = args
 
         var env = ProcessInfo.processInfo.environment
         env["WINEPREFIX"] = prefix.path
         let wineBin = (wine as NSString).deletingLastPathComponent
         env["PATH"] = "\(wineBin):/usr/bin:/bin:/usr/sbin:/sbin:" + (env["PATH"] ?? "")
+        env["WINEESYNC"] = opts.esync ? "1" : "0"
+        if !opts.winedebug.isEmpty { env["WINEDEBUG"] = opts.winedebug }
+        for line in opts.environment.split(separator: "\n") {
+            let kv = line.split(separator: "=", maxSplits: 1)
+            if kv.count == 2 { env[kv[0].trimmingCharacters(in: .whitespaces)] = String(kv[1]) }
+        }
         proc.environment = env
-        proc.currentDirectoryURL = URL(fileURLWithPath: (target as NSString).deletingLastPathComponent)
+        let workDir = opts.workingDir.isEmpty
+            ? (target as NSString).deletingLastPathComponent
+            : (opts.workingDir as NSString).expandingTildeInPath
+        proc.currentDirectoryURL = URL(fileURLWithPath: workDir)
 
         let wineserver = (wine as NSString).deletingLastPathComponent + "/wineserver"
         let hasWineserver = FileManager.default.isExecutableFile(atPath: wineserver)
@@ -294,6 +345,7 @@ final class WineManager: ObservableObject {
                     session.phase = .exited
                     library.setRunning(app.id, false)
                     self.processes[app.id] = nil
+                    self.writeLog(session, app: app)
                 }
             }
         }
@@ -338,6 +390,7 @@ final class WineManager: ObservableObject {
                     library.setRunning(app.id, false)
                     self.processes[app.id] = nil
                     self.watchers[app.id] = nil
+                    self.writeLog(session, app: app)
                 }
             }
             do {
@@ -363,5 +416,197 @@ final class WineManager: ObservableObject {
         let url = URL(fileURLWithPath: path)
         let items = (try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? []
         return items.first { $0.pathExtension.lowercased() == "exe" }?.path
+    }
+
+    // MARK: - Helpers
+
+    /// Splits a command-string into argv, honoring double quotes.
+    private func tokenize(_ s: String) -> [String] {
+        var out: [String] = []; var cur = ""; var inQuote = false
+        for ch in s {
+            if ch == "\"" { inQuote.toggle() }
+            else if ch == " " && !inQuote { if !cur.isEmpty { out.append(cur); cur = "" } }
+            else { cur.append(ch) }
+        }
+        if !cur.isEmpty { out.append(cur) }
+        return out
+    }
+
+    private func baseEnv(prefix: URL, wine: String) -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        env["WINEPREFIX"] = prefix.path
+        let wineBin = (wine as NSString).deletingLastPathComponent
+        env["PATH"] = "\(wineBin):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + (env["PATH"] ?? "")
+        return env
+    }
+
+    private func applyRetina(_ on: Bool, wine: String, prefix: URL) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: wine)
+        p.arguments = ["reg", "add", "HKCU\\Software\\Wine\\Mac Driver", "/v", "RetinaMode", "/d", on ? "y" : "n", "/f"]
+        var env = baseEnv(prefix: prefix, wine: wine); env["WINEDEBUG"] = "-all"
+        p.environment = env
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()   // fire-and-forget; the app reads it at startup
+    }
+
+    private func writeLog(_ session: LaunchSession, app: WineApp) {
+        try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+        let url = logsDirectory.appendingPathComponent("\(app.id).log")
+        try? session.lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    func logURL(for app: WineApp) -> URL? {
+        let url = logsDirectory.appendingPathComponent("\(app.id).log")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    // MARK: - Stop / force-quit
+
+    /// Kills every process in the app's bottle (wineserver -k) and clears state.
+    func forceQuit(app: WineApp, library: LibraryStore) {
+        forceQuit(bottle: app.bottle, library: library)
+    }
+
+    func forceQuit(bottle: String, library: LibraryStore) {
+        guard let wine = winePath else { return }
+        let wineserver = (wine as NSString).deletingLastPathComponent + "/wineserver"
+        guard FileManager.default.isExecutableFile(atPath: wineserver) else { return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: wineserver)
+        p.arguments = ["-k"]
+        p.environment = baseEnv(prefix: prefixURL(for: bottle), wine: wine)
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
+        for a in library.apps where a.bottle == bottle && a.running { library.setRunning(a.id, false) }
+    }
+
+    // MARK: - Bottle tools
+
+    /// Runs a wine builtin GUI tool (winecfg / regedit / control / explorer / taskmgr / uninstaller).
+    func runTool(_ tool: String, bottle: Bottle) {
+        guard let wine = winePath else { return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: wine)
+        p.arguments = [tool]
+        p.environment = baseEnv(prefix: prefixURL(for: bottle.id), wine: wine)
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
+    }
+
+    /// Deletes a bottle's on-disk prefix (destructive).
+    func deletePrefix(bottleID: String) {
+        try? FileManager.default.removeItem(at: prefixURL(for: bottleID))
+    }
+
+    func diskUsage(bottleID: String) async -> String {
+        let path = prefixURL(for: bottleID).path
+        guard FileManager.default.fileExists(atPath: path) else { return "—" }
+        return await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .utility).async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/bin/du")
+                p.arguments = ["-sk", path]
+                let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
+                do { try p.run(); p.waitUntilExit() } catch { cont.resume(returning: "—"); return }
+                let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                let kb = Int64(out.split(separator: "\t").first ?? "") ?? 0
+                cont.resume(returning: WineApp.humanSize(kb * 1024))
+            }
+        }
+    }
+
+    func openDriveC(bottle: Bottle) {
+        let c = prefixURL(for: bottle.id).appendingPathComponent("drive_c")
+        if FileManager.default.fileExists(atPath: c.path) {
+            NSWorkspace.shared.open(c)
+        } else {
+            NSWorkspace.shared.open(prefixURL(for: bottle.id))
+        }
+    }
+
+    /// Initializes (or repairs) a bottle's WINEPREFIX via wineboot, honoring its arch.
+    func initBottle(_ bottle: Bottle) -> ConsoleSession {
+        let session = ConsoleSession(title: "Initialize \(bottle.shortLabel)", subtitle: "wineboot · \(bottle.winArch)")
+        guard let wine = winePath else {
+            session.phase = .error; session.append("Wine runtime not ready yet."); return session
+        }
+        let prefix = prefixURL(for: bottle.id)
+        try? FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: wine)
+        p.arguments = ["wineboot", "-u"]
+        var env = baseEnv(prefix: prefix, wine: wine)
+        env["WINEARCH"] = bottle.winArch
+        p.environment = env
+        session.append("$ WINEARCH=\(bottle.winArch) WINEPREFIX=\(prefix.path) wineboot -u")
+        stream(p, into: session)
+        return session
+    }
+
+    // MARK: - winetricks
+
+    func runWinetricks(verbs: [String], bottle: Bottle) -> ConsoleSession {
+        let title = verbs.isEmpty ? "winetricks" : "winetricks \(verbs.joined(separator: " "))"
+        let session = ConsoleSession(title: title, subtitle: "Bottle \(bottle.shortLabel)")
+        guard let wine = winePath else {
+            session.phase = .error; session.append("Wine runtime not ready yet."); return session
+        }
+        Task { @MainActor in
+            do {
+                session.append("Preparing winetricks…")
+                let script = try await Winetricks.ensureInstalled()
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/bin/sh")
+                p.arguments = [script.path, "-q"] + verbs
+                var env = baseEnv(prefix: prefixURL(for: bottle.id), wine: wine)
+                env["WINE"] = wine
+                env["WINESERVER"] = (wine as NSString).deletingLastPathComponent + "/wineserver"
+                env["WINEARCH"] = bottle.winArch
+                p.environment = env
+                session.append("$ winetricks -q \(verbs.joined(separator: " "))")
+                stream(p, into: session)
+            } catch {
+                session.phase = .error
+                session.append("error: \(error.localizedDescription)")
+            }
+        }
+        return session
+    }
+
+    /// Sets the bottle's reported Windows version via winetricks (win7/win10/win11).
+    func setWindowsVersion(_ bottle: Bottle) -> ConsoleSession {
+        runWinetricks(verbs: [bottle.winVersion], bottle: bottle)
+    }
+
+    /// Streams a process's merged stdout/stderr into a ConsoleSession.
+    private func stream(_ proc: Process, into session: ConsoleSession) {
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = pipe
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            Task { @MainActor in session.ingest(text) }
+        }
+        let taskTitle = session.title
+        proc.terminationHandler = { p in
+            Task { @MainActor in
+                pipe.fileHandleForReading.readabilityHandler = nil
+                session.flush()
+                let ok = p.terminationStatus == 0
+                session.append(ok ? "→ done." : "→ exited with code \(p.terminationStatus).")
+                session.phase = ok ? .exited : .error
+                Notifier.notify(ok ? "Finished: \(taskTitle)" : "Failed: \(taskTitle)",
+                                ok ? "Completed successfully." : "Exited with code \(p.terminationStatus).")
+            }
+        }
+        do { try proc.run() } catch {
+            session.phase = .error
+            session.append("error: \(error.localizedDescription)")
+        }
     }
 }
