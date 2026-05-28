@@ -173,6 +173,10 @@ final class WineManager: ObservableObject {
     func bootstrap() {
         Task.detached(priority: .utility) {
             if let info = Self.loadInfo(), FileManager.default.isExecutableFile(atPath: info.binary) {
+                // Defensive: heal pre-existing managed installs that were created
+                // before runtime libs (libinotify.0.dylib) were bundled, so
+                // Sikarugir wineserver doesn't dyld-fail on startup.
+                self.installRuntimeLibs(into: Self.managedDir, for: info.binary)
                 await self.setActive(path: info.binary, version: info.version, system: false, kind: .ready)
             } else if let sys = Self.locateWine() {
                 await self.setActive(path: sys.0, version: sys.1, system: true, kind: .systemFallback)
