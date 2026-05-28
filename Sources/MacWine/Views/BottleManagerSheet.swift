@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct BottleManagerSheet: View {
     @EnvironmentObject var library: LibraryStore
@@ -202,6 +204,7 @@ private struct BottleDetail: View {
                 // tools
                 Text("TOOLS").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundStyle(p.textSecondary)
                 WrapButtons {
+                    toolButton("Install Software…", "tray.and.arrow.down") { chooseInstaller() }
                     toolButton("Initialize / Repair", "arrow.clockwise") { onConsole(wine.initBottle(bottle)) }
                     toolButton("winecfg", "gearshape") { wine.runTool("winecfg", bottle: bottle) }
                     toolButton("regedit", "square.grid.3x3") { wine.runTool("regedit", bottle: bottle) }
@@ -259,6 +262,22 @@ private struct BottleDetail: View {
         }
         .buttonStyle(.plain)
         .solidSurface(RoundedRectangle(cornerRadius: 8, style: .continuous), p)
+    }
+
+    private func chooseInstaller() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a Windows installer"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        var types: [UTType] = [.application]
+        if let exe = UTType(filenameExtension: "exe") { types.append(exe) }
+        if let msi = UTType(filenameExtension: "msi") { types.append(msi) }
+        panel.allowedContentTypes = types
+        panel.allowsOtherFileTypes = true
+        if panel.runModal() == .OK, let url = panel.url {
+            onConsole(wine.runInstaller(at: url, bottle: bottle))
+        }
     }
 }
 

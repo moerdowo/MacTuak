@@ -676,6 +676,39 @@ final class WineManager: ObservableObject {
         runWinetricks(verbs: [bottle.winVersion], bottle: bottle)
     }
 
+    /// Runs a Windows installer (.exe or .msi) inside the given bottle, streaming
+    /// the wine output to a ConsoleSession. The installer's own GUI handles the
+    /// next/finish clicks; we just keep wine alive and surface its logs.
+    func runInstaller(at url: URL, bottle: Bottle) -> ConsoleSession {
+        let title = "Install \(url.lastPathComponent)"
+        let session = ConsoleSession(title: title, subtitle: "Bottle \(bottle.shortLabel)")
+        guard let wine = winePath else {
+            session.phase = .error; session.append("Wine runtime not ready yet."); return session
+        }
+        let prefix = prefixURL(for: bottle.id)
+        try? FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
+        let path = url.path
+        let isMSI = path.lowercased().hasSuffix(".msi")
+
+        Task { @MainActor in
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: wine)
+            p.arguments = isMSI ? ["msiexec", "/i", path] : [path]
+            p.environment = baseEnv(prefix: prefix, wine: wine)
+            p.currentDirectoryURL = URL(fileURLWithPath: (path as NSString).deletingLastPathComponent)
+            session.append("$ WINEPREFIX=\(prefix.path) \\")
+            session.append("  wine \(isMSI ? "msiexec /i " : "")\"\(path)\"")
+            let code = await self.runStreaming(p, into: session)
+            let ok = code == 0
+            session.append(ok ? "→ installer finished. Use \"Scan for Apps\" to add it to your library."
+                              : "→ installer exited with code \(code).")
+            session.phase = ok ? .exited : .error
+            Notifier.notify(ok ? "Installed: \(url.lastPathComponent)" : "Installer failed",
+                            ok ? "Open the bottle and use Scan for Apps to register it." : "Exited with code \(code).")
+        }
+        return session
+    }
+
     /// Streams a process's merged stdout/stderr into a ConsoleSession.
     private func stream(_ proc: Process, into session: ConsoleSession) {
         let pipe = Pipe()
