@@ -24,6 +24,15 @@ if [ -d vendor ]; then
   chmod 755 "$APP/Contents/Resources/tools/cabextract" "$APP/Contents/Resources/tools/7za"
 fi
 
+# Universal libinotify shim used by Sikarugir / Whisky Wine builds (wineserver
+# loads @rpath/libinotify.0.dylib on startup). Dropped next to wswine.bundle
+# after engine install.
+if [ -f vendor/libinotify.0.dylib ]; then
+  mkdir -p "$APP/Contents/Resources/runtime-libs"
+  cp vendor/libinotify.0.dylib "$APP/Contents/Resources/runtime-libs/libinotify.0.dylib"
+  chmod 755 "$APP/Contents/Resources/runtime-libs/libinotify.0.dylib"
+fi
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

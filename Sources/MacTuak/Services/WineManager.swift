@@ -227,6 +227,7 @@ final class WineManager: ObservableObject {
                     throw NSError(domain: "MacTuak", code: 4, userInfo: [NSLocalizedDescriptionKey: "wine binary missing after install"])
                 }
                 try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin)
+                self.installRuntimeLibs(into: Self.managedDir, for: bin)
                 Self.saveInfo(InstalledInfo(version: release.version, binary: bin, channel: nil, engine: engine.id))
                 try? fm.removeItem(at: archive)
 
@@ -482,6 +483,28 @@ final class WineManager: ObservableObject {
         guard let url = Bundle.main.resourceURL?.appendingPathComponent("tools", isDirectory: true),
               FileManager.default.fileExists(atPath: url.path) else { return nil }
         return url
+    }
+
+    /// Drops shipped runtime libraries (libinotify.0.dylib, …) next to the
+    /// installed wine bundle so Sikarugir/Whisky wineserver finds them via
+    /// `@rpath` (`wswine.bundle/bin/../../libinotify.0.dylib`). Harmless on
+    /// Gcenx, where the binary doesn't reference these libs at all.
+    nonisolated fileprivate func installRuntimeLibs(into managedDir: URL, for binary: String) {
+        guard let src = Bundle.main.resourceURL?.appendingPathComponent("runtime-libs", isDirectory: true),
+              FileManager.default.fileExists(atPath: src.path) else { return }
+        // Place dylibs at the level the binary's rpath expects: two directories
+        // up from `<bundle>/bin/<binary>`. For both Gcenx and Sikarugir layouts
+        // this is the managed Wine root.
+        let dest = managedDir
+        try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+        if let items = try? FileManager.default.contentsOfDirectory(at: src, includingPropertiesForKeys: nil) {
+            for item in items where item.pathExtension == "dylib" {
+                let target = dest.appendingPathComponent(item.lastPathComponent)
+                try? FileManager.default.removeItem(at: target)
+                try? FileManager.default.copyItem(at: item, to: target)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: target.path)
+            }
+        }
     }
 
     private func baseEnv(prefix: URL, wine: String) -> [String: String] {
