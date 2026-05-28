@@ -561,11 +561,13 @@ final class WineManager: ObservableObject {
 
     // MARK: - winetricks
 
-    func runWinetricks(verbs: [String], bottle: Bottle) -> ConsoleSession {
+    func runWinetricks(verbs: [String], bottle: Bottle, onComplete: ((Bool) -> Void)? = nil) -> ConsoleSession {
         let title = verbs.isEmpty ? "winetricks" : "winetricks \(verbs.joined(separator: " "))"
         let session = ConsoleSession(title: title, subtitle: "Bottle \(bottle.shortLabel)")
         guard let wine = winePath else {
-            session.phase = .error; session.append("Wine runtime not ready yet."); return session
+            session.phase = .error; session.append("Wine runtime not ready yet.")
+            onComplete?(false)
+            return session
         }
         Task { @MainActor in
             do {
@@ -589,9 +591,11 @@ final class WineManager: ObservableObject {
                 session.phase = ok ? .exited : .error
                 Notifier.notify(ok ? "Finished: \(title)" : "Failed: \(title)",
                                 ok ? "Completed successfully." : "Exited with code \(code).")
+                onComplete?(ok)
             } catch {
                 session.phase = .error
                 session.append("error: \(error.localizedDescription)")
+                onComplete?(false)
             }
         }
         return session

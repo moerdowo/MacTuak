@@ -7,6 +7,7 @@ struct Sidebar: View {
     @Binding var section: String
     var onAdd: () -> Void
     var onManageBottles: () -> Void
+    var onAppStore: () -> Void
 
     var body: some View {
         let accent = settings.accentColor
@@ -66,16 +67,34 @@ struct Sidebar: View {
             }
 
             // add button
-            Button(action: onAdd) {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus").font(.system(size: 13, weight: .semibold))
-                    Text("Add Application").font(.system(size: 12.5, weight: .semibold))
+            VStack(spacing: 6) {
+                Button(action: onAdd) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus").font(.system(size: 13, weight: .semibold))
+                        Text("Add Application").font(.system(size: 12.5, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity).frame(height: 32)
+                    .foregroundStyle(p.text)
                 }
-                .frame(maxWidth: .infinity).frame(height: 32)
-                .foregroundStyle(p.text)
+                .buttonStyle(.plain)
+                .solidSurface(RoundedRectangle(cornerRadius: 9, style: .continuous), p)
+
+                Button(action: onAppStore) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bag.fill").font(.system(size: 12, weight: .semibold))
+                        Text("Winetricks App Store").font(.system(size: 12.5, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity).frame(height: 32)
+                    .foregroundStyle(.white)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(LinearGradient(colors: [accent, accent.darkened(0.22)],
+                                             startPoint: .top, endPoint: .bottom)))
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
+                    .shadow(color: accent.opacity(0.3), radius: 4, y: 2)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .solidSurface(RoundedRectangle(cornerRadius: 9, style: .continuous), p)
             .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 14)
         }
         .frame(width: 240)

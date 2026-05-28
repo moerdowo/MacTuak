@@ -14,6 +14,8 @@ struct ContentView: View {
     @State private var editing: WineApp?
     @State private var showBottles = false
     @State private var showLicenses = false
+    @State private var showAppStore = false
+    @State private var storeConsole: ConsoleSession?
     @State private var prefilledURL: URL?
     @State private var recentlyUninstalled: WineApp?
     @State private var undoTask: Task<Void, Never>?
@@ -29,7 +31,9 @@ struct ContentView: View {
             p.appBG.ignoresSafeArea()
 
             HStack(spacing: 0) {
-                Sidebar(section: $section, onAdd: openAdd, onManageBottles: { showBottles = true })
+                Sidebar(section: $section, onAdd: openAdd,
+                        onManageBottles: { showBottles = true },
+                        onAppStore: { showAppStore = true })
                 mainColumn(accent: accent)
             }
 
@@ -61,6 +65,16 @@ struct ContentView: View {
             if showLicenses {
                 LicensesSheet(accent: accent, onClose: { showLicenses = false })
                     .zIndex(75)
+            }
+            if showAppStore {
+                WinetricksAppStoreSheet(accent: accent,
+                                        onConsole: { storeConsole = $0 },
+                                        onClose: { showAppStore = false })
+                    .zIndex(72)
+            }
+            if let storeConsole {
+                ConsoleSheet(session: storeConsole) { self.storeConsole = nil }
+                    .zIndex(74)
             }
             if showOnboarding {
                 OnboardingOverlay(accent: accent, onContinue: { onboardingDismissed = true })
