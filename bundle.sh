@@ -1,16 +1,16 @@
 #!/bin/bash
-# Builds MacWine and wraps the binary in a double-clickable .app bundle.
+# Builds MacTuak and wraps the binary in a double-clickable .app bundle.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 CONFIG="${1:-debug}"
 swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/MacWine"
+BIN="$(swift build -c "$CONFIG" --show-bin-path)/MacTuak"
 
-APP="MacWine.app"
+APP="MacTuak.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/MacWine"
+cp "$BIN" "$APP/Contents/MacOS/MacTuak"
 [ -f icon/AppIcon.icns ] && cp icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 [ -d licenses ] && cp -R licenses "$APP/Contents/Resources/licenses"
 
@@ -29,13 +29,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>MacWine</string>
-  <key>CFBundleDisplayName</key><string>MacWine</string>
-  <key>CFBundleIdentifier</key><string>com.macwine.app</string>
+  <key>CFBundleName</key><string>MacTuak</string>
+  <key>CFBundleDisplayName</key><string>MacTuak</string>
+  <key>CFBundleIdentifier</key><string>com.mactuak.app</string>
   <key>CFBundleVersion</key><string>1.0</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleExecutable</key><string>MacWine</string>
+  <key>CFBundleExecutable</key><string>MacTuak</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>

@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "MacWine",
+    name: "MacTuak",
     platforms: [
         .macOS("26.0")
     ],
     targets: [
         .executableTarget(
-            name: "MacWine",
-            path: "Sources/MacWine"
+            name: "MacTuak",
+            path: "Sources/MacTuak"
         )
     ]
 )
