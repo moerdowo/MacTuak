@@ -58,10 +58,20 @@ enum WineHints {
                 message: "Esync clashed with the existing wineserver. In Edit Info → Launch Options, turn off Esync; or use Bottle Manager → Force Quit on the bottle, then relaunch.")
         }
 
+        // Wine builtin D3D11/DXGI not loadable — usually the prefix was created
+        // under a different wine engine. Initialize/Repair the bottle, or
+        // install real DLLs via DXMT/DXVK.
+        if l.contains("err:module:import_dll") &&
+           (l.contains("dxgi.dll") || l.contains("d3d11.dll") || l.contains("d3d10.dll") || l.contains("d3d9.dll")) {
+            return Hint(key: "missing-d3d-builtin",
+                message: "Wine builtin DXGI/D3D didn't load — usually because the prefix was set up under a different engine. Try Bottle Manager → Initialize / Repair on this bottle. If that doesn't fix it, enable DXMT (or DXVK) in the bottle's Direct3D Backend section.")
+        }
+
         // App needs a DLL that isn't installed.
-        if l.contains("err:module:") && (l.contains("module not found") || l.contains("loadlibrary")) {
+        if (l.contains("err:module:import_dll") && l.contains("not found")) ||
+           (l.contains("err:module:") && (l.contains("module not found") || l.contains("loadlibrary"))) {
             return Hint(key: "missing-dll",
-                message: "A Windows DLL is missing. The most common fixes are installing vcrun2019, dotnet48, or d3dcompiler_47 via the Winetricks Browser.")
+                message: "A Windows DLL is missing. Try Bottle Manager → Initialize / Repair first (re-seeds wine builtins). If still missing, install vcrun2019 / dotnet48 / d3dcompiler_47 via the Winetricks Browser.")
         }
 
         return nil
