@@ -24,13 +24,16 @@ if [ -d vendor ]; then
   chmod 755 "$APP/Contents/Resources/tools/cabextract" "$APP/Contents/Resources/tools/7za"
 fi
 
-# Universal libinotify shim used by Sikarugir / Whisky Wine builds (wineserver
-# loads @rpath/libinotify.0.dylib on startup). Dropped next to wswine.bundle
-# after engine install.
-if [ -f vendor/libinotify.0.dylib ]; then
+# Universal runtime libs used by Sikarugir / Whisky Wine builds (libinotify,
+# libfreetype, …). WineManager drops them next to wswine.bundle on launch so
+# wineserver / win32u resolve them via @rpath.
+if compgen -G "vendor/*.dylib" > /dev/null; then
   mkdir -p "$APP/Contents/Resources/runtime-libs"
-  cp vendor/libinotify.0.dylib "$APP/Contents/Resources/runtime-libs/libinotify.0.dylib"
-  chmod 755 "$APP/Contents/Resources/runtime-libs/libinotify.0.dylib"
+  for f in vendor/*.dylib; do
+    name=$(basename "$f")
+    cp "$f" "$APP/Contents/Resources/runtime-libs/$name"
+    chmod 755 "$APP/Contents/Resources/runtime-libs/$name"
+  done
 fi
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
