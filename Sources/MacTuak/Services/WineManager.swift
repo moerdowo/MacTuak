@@ -614,7 +614,7 @@ final class WineManager: ObservableObject {
     /// arch. When `applyVersion` is true (used for newly-created bottles), the
     /// chosen Windows version is applied via `winetricks <ver>` after wineboot,
     /// so winecfg reflects the user's pick instead of Wine's default Win10.
-    func initBottle(_ bottle: Bottle, applyVersion: Bool = false) -> ConsoleSession {
+    func initBottle(_ bottle: Bottle, applyVersion: Bool = false, installRuntimes: Bool = false) -> ConsoleSession {
         let session = ConsoleSession(title: "Initialize \(bottle.shortLabel)", subtitle: "wineboot · \(bottle.winArch)")
         guard let wine = winePath else {
             session.phase = .error; session.append("Wine runtime not ready yet."); return session
@@ -640,33 +640,54 @@ final class WineManager: ObservableObject {
 
             // 2. apply Windows version (only if user picked something other than the default win10)
             if applyVersion && bottle.winVersion != "win10" {
-                await self.ensureWinetricksDeps(into: session)
-                session.append("Setting Windows version → \(bottle.winVersion)…")
-                guard let script = try? await Winetricks.ensureInstalled() else {
-                    session.append("→ winetricks unavailable; bottle is initialized but in default Win10.")
-                    session.phase = .exited
-                    return
-                }
-                let wt = Process()
-                wt.executableURL = URL(fileURLWithPath: "/bin/sh")
-                wt.arguments = [script.path, "-q", bottle.winVersion]
-                var wtEnv = baseEnv(prefix: prefix, wine: wine)
-                wtEnv["WINE"] = wine
-                wtEnv["WINESERVER"] = (wine as NSString).deletingLastPathComponent + "/wineserver"
-                wtEnv["WINEARCH"] = bottle.winArch
-                wt.environment = wtEnv
-                session.append("$ winetricks -q \(bottle.winVersion)")
-                let code = await self.runStreaming(wt, into: session)
-                let ok = code == 0
-                session.append(ok ? "→ bottle ready (Windows \(bottle.winVersion.dropFirst(3)))."
-                                  : "→ winetricks exited with code \(code).")
-                session.phase = ok ? .exited : .error
-            } else {
+                await self.runWinetricksVerbs([bottle.winVersion],
+                                              label: "Set Windows → \(bottle.winVersion)",
+                                              wine: wine, prefix: prefix, arch: bottle.winArch,
+                                              into: session)
+            }
+
+            // 3. install common Windows runtimes (corefonts, vcrun2019, …)
+            if installRuntimes {
+                await self.runWinetricksVerbs(Winetricks.coreRuntimeVerbs,
+                                              label: "Install common runtimes",
+                                              wine: wine, prefix: prefix, arch: bottle.winArch,
+                                              into: session)
+            }
+
+            if session.phase != .error {
                 session.append("→ bottle ready.")
                 session.phase = .exited
             }
         }
         return session
+    }
+
+    /// Helper: run one or more winetricks verbs in the given prefix, streaming
+    /// into the supplied console session. Returns silently on success; sets
+    /// phase=.error on failure so callers can short-circuit subsequent steps.
+    private func runWinetricksVerbs(_ verbs: [String], label: String,
+                                    wine: String, prefix: URL, arch: String,
+                                    into session: ConsoleSession) async {
+        await ensureWinetricksDeps(into: session)
+        session.append(label + " (winetricks " + verbs.joined(separator: " ") + ")…")
+        guard let script = try? await Winetricks.ensureInstalled() else {
+            session.append("→ winetricks unavailable; skipping.")
+            session.phase = .error
+            return
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = [script.path, "-q"] + verbs
+        var env = baseEnv(prefix: prefix, wine: wine)
+        env["WINE"] = wine
+        env["WINESERVER"] = (wine as NSString).deletingLastPathComponent + "/wineserver"
+        env["WINEARCH"] = arch
+        p.environment = env
+        let code = await runStreaming(p, into: session)
+        if code != 0 {
+            session.append("→ winetricks (\(verbs.joined(separator: " "))) exited with code \(code).")
+            session.phase = .error
+        }
     }
 
     // MARK: - winetricks

@@ -20,6 +20,11 @@ enum Winetricks {
         return scriptURL
     }
 
+    /// Auto-installed when "Install common runtimes" is enabled on a new bottle.
+    /// Covers the dependencies most Windows apps assume: TrueType fonts, VC++
+    /// 2015–2019, the Direct3D shader compiler, GDI+, and XACT audio.
+    static let coreRuntimeVerbs = ["corefonts", "vcrun2019", "d3dcompiler_47", "gdiplus", "xact"]
+
     /// Curated verbs offered in the bottle UI.
     static let commonVerbs: [(verb: String, label: String)] = [
         ("dxvk", "DXVK (Direct3D→Vulkan)"),

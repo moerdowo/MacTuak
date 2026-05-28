@@ -57,10 +57,10 @@ struct BottleManagerSheet: View {
                 }.zIndex(10)
             }
             if newBottle {
-                NewBottleSheet(accent: accent) { label, ver, arch in
+                NewBottleSheet(accent: accent) { label, ver, arch, installRuntimes in
                     let b = library.addBottle(label: label, windowsVersion: ver, arch: arch)
                     selection = b.id
-                    console = wine.initBottle(b, applyVersion: true)
+                    console = wine.initBottle(b, applyVersion: true, installRuntimes: installRuntimes)
                     newBottle = false
                 } onCancel: { newBottle = false }.zIndex(10)
             }
@@ -223,6 +223,9 @@ private struct BottleDetail: View {
                     toolButton("Open C: Drive", "folder") { wine.openDriveC(bottle: bottle) }
                     toolButton("Scan for Apps", "magnifyingglass") { onScan() }
                     toolButton("Browse winetricks…", "puzzlepiece.extension") { onBrowse() }
+                    toolButton("Install common runtimes", "shippingbox.fill") {
+                        onConsole(wine.runWinetricks(verbs: Winetricks.coreRuntimeVerbs, bottle: bottle))
+                    }
                 }
 
                 Divider()
@@ -395,11 +398,13 @@ private struct WrapButtons<Content: View>: View {
 private struct NewBottleSheet: View {
     @Environment(\.palette) private var p
     let accent: Color
-    var onCreate: (String, String, String) -> Void
+    /// (label, windowsVersion, arch, installRuntimes)
+    var onCreate: (String, String, String, Bool) -> Void
     var onCancel: () -> Void
 
     @State private var label = "New Bottle"
     @State private var winVer = "win10"
+    @State private var installRuntimes = true
 
     var body: some View {
         ZStack {
@@ -417,15 +422,23 @@ private struct NewBottleSheet: View {
                     }.pickerStyle(.segmented).labelsHidden().fixedSize()
                     Spacer()
                 }
+                Toggle(isOn: $installRuntimes) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Install common runtimes").font(.system(size: 12.5, weight: .semibold))
+                        Text("corefonts · vcrun2019 · d3dcompiler_47 · gdiplus · xact — adds ~5 min, but most apps assume these.")
+                            .font(.system(size: 10.5)).foregroundStyle(p.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }.toggleStyle(.checkbox)
                 Text("All bottles are 64-bit. 32-bit Windows apps run inside via WoW64 — modern Wine no longer supports pure 32-bit prefixes.")
                     .font(.system(size: 11)).foregroundStyle(p.textSecondary)
                 HStack {
                     Spacer()
                     Button("Cancel", action: onCancel)
-                    Button("Create") { onCreate(label, winVer, "win64") }.keyboardShortcut(.defaultAction)
+                    Button("Create") { onCreate(label, winVer, "win64", installRuntimes) }.keyboardShortcut(.defaultAction)
                 }
             }
-            .padding(18).frame(width: 440)
+            .padding(18).frame(width: 460)
             .background(p.appBG, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(p.border, lineWidth: 0.5))
             .shadow(color: .black.opacity(0.3), radius: 30, y: 16)
