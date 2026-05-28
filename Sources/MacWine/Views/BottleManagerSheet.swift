@@ -314,7 +314,6 @@ private struct NewBottleSheet: View {
 
     @State private var label = "New Bottle"
     @State private var winVer = "win10"
-    @State private var arch = "win64"
 
     var body: some View {
         ZStack {
@@ -331,18 +330,16 @@ private struct NewBottleSheet: View {
                         Text("7").tag("win7"); Text("10").tag("win10"); Text("11").tag("win11")
                     }.pickerStyle(.segmented).labelsHidden().fixedSize()
                     Spacer()
-                    Text("Arch").font(.system(size: 12)).foregroundStyle(p.textSecondary)
-                    Picker("", selection: $arch) {
-                        Text("64-bit").tag("win64"); Text("32-bit").tag("win32")
-                    }.pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
+                Text("All bottles are 64-bit. 32-bit Windows apps run inside via WoW64 — modern Wine no longer supports pure 32-bit prefixes.")
+                    .font(.system(size: 11)).foregroundStyle(p.textSecondary)
                 HStack {
                     Spacer()
                     Button("Cancel", action: onCancel)
-                    Button("Create") { onCreate(label, winVer, arch) }.keyboardShortcut(.defaultAction)
+                    Button("Create") { onCreate(label, winVer, "win64") }.keyboardShortcut(.defaultAction)
                 }
             }
-            .padding(18).frame(width: 420)
+            .padding(18).frame(width: 440)
             .background(p.appBG, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(p.border, lineWidth: 0.5))
             .shadow(color: .black.opacity(0.3), radius: 30, y: 16)

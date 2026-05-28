@@ -10,7 +10,10 @@ struct Bottle: Identifiable, Codable, Equatable {
 
     var shortLabel: String { label.components(separatedBy: " · ").first ?? label }
     var winVersion: String { windowsVersion ?? "win10" }
-    var winArch: String { arch ?? "win64" }
+    /// The Wine arch to actually use. Pinned to win64 because the bundled Wine
+    /// is wow64 (modern Wine has no pure-32-bit mode); WoW64 still runs 32-bit
+    /// Windows apps inside a 64-bit prefix.
+    var winArch: String { "win64" }
 
     var windowsVersionLabel: String {
         ["win7": "Windows 7", "win10": "Windows 10", "win11": "Windows 11"][winVersion] ?? winVersion
