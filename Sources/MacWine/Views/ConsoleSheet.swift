@@ -57,6 +57,7 @@ struct ConsoleSheet: View {
     }
 
     private func color(for line: String) -> Color {
+        if line.hasPrefix("💡") { return Color(hex: "#ffd86b") }
         if line.hasPrefix("→") { return Color(hex: "#5eea85") }
         if line.lowercased().contains("error") || line.lowercased().contains("failed") { return Color(hex: "#ff8a8a") }
         if line.hasPrefix("$") { return .white }

@@ -13,6 +13,7 @@ final class LaunchSession: ObservableObject {
     @Published var phase: Phase = .booting
 
     private var buffer = ""
+    private var emittedHints = Set<String>()
 
     init(app: WineApp) { self.app = app }
 
@@ -22,6 +23,7 @@ final class LaunchSession: ObservableObject {
             let line = String(buffer[buffer.startIndex..<nl])
             buffer.removeSubrange(buffer.startIndex...nl)
             append(line)
+            checkHint(line)
         }
         if phase == .booting { phase = .running }
     }
@@ -34,6 +36,13 @@ final class LaunchSession: ObservableObject {
     func flush() {
         if !buffer.isEmpty { append(buffer); buffer = "" }
     }
+
+    private func checkHint(_ line: String) {
+        guard !line.hasPrefix("💡"),
+              let h = WineHints.match(line),
+              emittedHints.insert(h.key).inserted else { return }
+        append("💡 Tip: \(h.message)")
+    }
 }
 
 /// Generic streaming console for bottle tools (wineboot, winetricks, winecfg…).
@@ -45,19 +54,29 @@ final class ConsoleSession: ObservableObject, Identifiable {
     @Published var lines: [String] = []
     @Published var phase: LaunchSession.Phase = .booting
     private var buffer = ""
+    private var emittedHints = Set<String>()
 
     init(title: String, subtitle: String) { self.title = title; self.subtitle = subtitle }
 
     func ingest(_ text: String) {
         buffer += text
         while let nl = buffer.firstIndex(of: "\n") {
-            append(String(buffer[buffer.startIndex..<nl]))
+            let line = String(buffer[buffer.startIndex..<nl])
             buffer.removeSubrange(buffer.startIndex...nl)
+            append(line)
+            checkHint(line)
         }
         if phase == .booting { phase = .running }
     }
     func append(_ line: String) { lines.append(line); if lines.count > 600 { lines.removeFirst(lines.count - 600) } }
     func flush() { if !buffer.isEmpty { append(buffer); buffer = "" } }
+
+    private func checkHint(_ line: String) {
+        guard !line.hasPrefix("💡"),
+              let h = WineHints.match(line),
+              emittedHints.insert(h.key).inserted else { return }
+        append("💡 Tip: \(h.message)")
+    }
 }
 
 // MARK: - Runtime state (surfaced in the status bar / tweaks)

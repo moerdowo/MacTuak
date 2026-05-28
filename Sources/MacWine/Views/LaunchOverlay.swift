@@ -121,6 +121,7 @@ struct LaunchOverlay: View {
     }
 
     private func color(for line: String) -> Color {
+        if line.hasPrefix("💡") { return Color(hex: "#ffd86b") }
         if line.hasPrefix("→") { return Color(hex: "#5eea85") }
         if line.hasPrefix("error") { return Color(hex: "#ff8a8a") }
         if line.hasPrefix("fixme") || line.contains("fixme:") { return .white.opacity(0.4) }
