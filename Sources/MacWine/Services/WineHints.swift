@@ -33,6 +33,16 @@ enum WineHints {
                 message: "The bundled Wine is wow64 — only 64-bit prefixes. 32-bit Windows apps still run inside one via WoW64; delete this bottle and create a new one (it'll be 64-bit automatically).")
         }
 
+        // Direct3D failing on wined3d (OpenGL) on macOS — install DXVK.
+        if l.contains("requested d3d feature levels") ||
+           l.contains("gl_invalid_framebuffer_operation") ||
+           (l.contains("wined3d_select_feature_level") && l.contains("none")) ||
+           l.contains("gl_surface_egl") ||
+           l.contains("eglinitialize") {
+            return Hint(key: "needs-dxvk",
+                message: "Wine's built-in wined3d can't do modern Direct3D on macOS. Install dxvk from the Winetricks Browser to route D3D9/10/11 through Vulkan → MoltenVK → Metal. If this is a Chromium/Electron app, also add --disable-gpu in Edit Info → Launch Options → Arguments.")
+        }
+
         // App needs a DLL that isn't installed.
         if l.contains("err:module:") && (l.contains("module not found") || l.contains("loadlibrary")) {
             return Hint(key: "missing-dll",
