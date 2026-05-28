@@ -249,6 +249,28 @@ private struct BottleDetail: View {
                 Divider()
 
                 Text("DIRECT3D BACKEND").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundStyle(p.textSecondary)
+
+                // Quick presets that flip the three switches to the right combo.
+                HStack(spacing: 6) {
+                    presetButton("General / Electron", system: "app",
+                                 active: !bottle.useDXVK && !bottle.useDXMT && !bottle.useD3DMetal) {
+                        applyD3DPreset(dxvk: false, dxmt: false, d3dMetal: false)
+                    }
+                    presetButton("Modern game (D3D11)", system: "gamecontroller",
+                                 active: bottle.useDXMT && !bottle.useDXVK && !bottle.useD3DMetal) {
+                        applyD3DPreset(dxvk: false, dxmt: true, d3dMetal: false)
+                    }
+                    let isGPTK = wine.engineID == "sikarugir-gptk"
+                    presetButton("D3D12 / GPTK", system: "cpu",
+                                 active: bottle.useD3DMetal,
+                                 disabled: !isGPTK) {
+                        applyD3DPreset(dxvk: false, dxmt: false, d3dMetal: true)
+                    }
+                    Spacer()
+                }
+                Text("Tip: For Electron apps, also add ‘--disable-gpu’ in Edit Info → Launch Options.")
+                    .font(.system(size: 10.5)).foregroundStyle(p.textSecondary)
+
                 d3dToggle("Direct3D to Metal (D3DMetal)",
                           subtitle: "Apple Game Porting Toolkit — D3D11/12 → Metal. Requires the Wine GPTK engine.",
                           isOn: bottle.useD3DMetal) { on in
@@ -277,6 +299,37 @@ private struct BottleDetail: View {
         }
         .frame(maxWidth: .infinity)
         .task(id: bottle.id) { disk = await wine.diskUsage(bottleID: bottle.id) }
+    }
+
+    /// Pill button used for the D3D presets. Highlights when the current bottle
+    /// state matches the preset; greys out when prerequisites aren't met.
+    private func presetButton(_ label: String, system: String, active: Bool, disabled: Bool = false,
+                              _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: active ? "checkmark.circle.fill" : system).font(.system(size: 11))
+                Text(label).font(.system(size: 11.5, weight: .semibold))
+            }
+            .foregroundStyle(active ? Color.white : (disabled ? p.textSecondary : p.text))
+            .padding(.horizontal, 10).frame(height: 26)
+            .background(RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(active ? AnyShapeStyle(accent)
+                      : AnyShapeStyle(p.control)))
+            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(active ? accent.opacity(0.8) : p.border, lineWidth: 0.5))
+            .opacity(disabled ? 0.45 : 1)
+        }
+        .buttonStyle(.plain).disabled(disabled)
+        .help(disabled ? "Requires the Wine GPTK engine. Open Tweaks → Change engine…" : label)
+    }
+
+    /// Apply a preset: only call setX for toggles whose target state differs from
+    /// the bottle's current state. The last triggered console takes the screen;
+    /// quick reg-add/delete steps finish in the background.
+    private func applyD3DPreset(dxvk: Bool, dxmt: Bool, d3dMetal: Bool) {
+        if bottle.useDXVK     != dxvk     { onConsole(wine.setDXVK(bottle: bottle, enable: dxvk, library: library)) }
+        if bottle.useDXMT     != dxmt     { onConsole(wine.setDXMT(bottle: bottle, enable: dxmt, library: library)) }
+        if bottle.useD3DMetal != d3dMetal { onConsole(wine.setD3DMetal(bottle: bottle, enable: d3dMetal, library: library)) }
     }
 
     /// Compact two-line toggle row: title + subtitle on the left, switch on the right.
