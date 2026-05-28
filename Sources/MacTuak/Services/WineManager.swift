@@ -360,6 +360,11 @@ final class WineManager: ObservableObject {
         env["WINEPREFIX"] = prefix.path
         let wineBin = (wine as NSString).deletingLastPathComponent
         env["PATH"] = "\(wineBin):/usr/bin:/bin:/usr/sbin:/sbin:" + (env["PATH"] ?? "")
+        // dyld fallback so wine's runtime `dlopen("libfreetype.6.dylib")` /
+        // libgnutls / etc. find the dylibs we drop next to wswine.bundle.
+        let managedRoot = Self.managedDir.path
+        let existingDyld = env["DYLD_FALLBACK_LIBRARY_PATH"] ?? "\(NSHomeDirectory())/lib:/usr/local/lib:/usr/lib"
+        env["DYLD_FALLBACK_LIBRARY_PATH"] = "\(managedRoot):\(existingDyld)"
         env["WINEESYNC"] = opts.esync ? "1" : "0"
         if !opts.winedebug.isEmpty { env["WINEDEBUG"] = opts.winedebug }
         for line in opts.environment.split(separator: "\n") {
@@ -519,6 +524,12 @@ final class WineManager: ObservableObject {
         if let tools = bundledToolsDir?.path { parts.append(tools) }
         parts += ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env["PATH"] = parts.joined(separator: ":") + ":" + (env["PATH"] ?? "")
+        // Wine `dlopen`s libfreetype / libgnutls / etc. by bare name — make dyld
+        // search the managed Wine dir (where we drop the bundled shims) before
+        // falling back to system paths.
+        let managed = Self.managedDir.path
+        let existing = env["DYLD_FALLBACK_LIBRARY_PATH"] ?? "\(NSHomeDirectory())/lib:/usr/local/lib:/usr/lib"
+        env["DYLD_FALLBACK_LIBRARY_PATH"] = "\(managed):\(existing)"
         return env
     }
 
