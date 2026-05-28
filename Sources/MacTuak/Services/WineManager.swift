@@ -245,7 +245,14 @@ final class WineManager: ObservableObject {
     }
 
     private func updateProgress(_ frac: Double) {
-        if runtime.kind == .downloading { runtime.progress = frac }
+        guard runtime.kind == .downloading else { return }
+        // URLSession spews progress callbacks hundreds of times per second.
+        // Coalesce: only nudge the UI when progress advances by ≥1% (or hits
+        // 100%), and never let it go backwards.
+        let next = min(1.0, max(runtime.progress, frac))
+        if next >= 1.0 || next - runtime.progress >= 0.01 {
+            runtime.progress = next
+        }
     }
 
     private func handleUpdateFailure(_ message: String, haveActive: Bool) {
