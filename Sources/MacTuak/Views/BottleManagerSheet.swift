@@ -248,6 +248,25 @@ private struct BottleDetail: View {
 
                 Divider()
 
+                Text("DIRECT3D BACKEND").font(.system(size: 10, weight: .bold)).tracking(0.5).foregroundStyle(p.textSecondary)
+                d3dToggle("Direct3D to Metal (D3DMetal)",
+                          subtitle: "Apple Game Porting Toolkit — D3D11/12 → Metal. Requires the Wine GPTK engine.",
+                          isOn: bottle.useD3DMetal) { on in
+                    onConsole(wine.setD3DMetal(bottle: bottle, enable: on, library: library))
+                }
+                d3dToggle("DirectX to Metal (DXMT)",
+                          subtitle: "Sikarugir DXMT — D3D11 → Metal directly. Latest build is auto-downloaded.",
+                          isOn: bottle.useDXMT) { on in
+                    onConsole(wine.setDXMT(bottle: bottle, enable: on, library: library))
+                }
+                d3dToggle("DirectX to Vulkan (DXVK)",
+                          subtitle: "DXVK — D3D9/10/11 → Vulkan → MoltenVK. Best for many games.",
+                          isOn: bottle.useDXVK) { on in
+                    onConsole(wine.setDXVK(bottle: bottle, enable: on, library: library))
+                }
+
+                Divider()
+
                 HStack(spacing: 8) {
                     Button(role: .destructive, action: onReset) { Label("Reset", systemImage: "arrow.counterclockwise") }
                     Button(role: .destructive, action: onDelete) { Label("Delete Bottle", systemImage: "trash") }
@@ -258,6 +277,20 @@ private struct BottleDetail: View {
         }
         .frame(maxWidth: .infinity)
         .task(id: bottle.id) { disk = await wine.diskUsage(bottleID: bottle.id) }
+    }
+
+    /// Compact two-line toggle row: title + subtitle on the left, switch on the right.
+    private func d3dToggle(_ title: String, subtitle: String, isOn: Bool, onSet: @escaping (Bool) -> Void) -> some View {
+        let binding = Binding<Bool>(get: { isOn }, set: { onSet($0) })
+        return HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(p.text)
+                Text(subtitle).font(.system(size: 11)).foregroundStyle(p.textSecondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: binding).labelsHidden().toggleStyle(.switch).controlSize(.small)
+        }
+        .padding(.vertical, 4)
     }
 
     private func info(_ k: String, _ v: String) -> some View {

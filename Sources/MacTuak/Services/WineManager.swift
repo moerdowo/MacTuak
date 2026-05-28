@@ -785,6 +785,120 @@ final class WineManager: ObservableObject {
         }
     }
 
+    // MARK: - Direct3D backends (DXVK / DXMT / D3DMetal)
+
+    /// Enable or disable DXVK in a bottle. Enable installs via winetricks;
+    /// disable resets the relevant DLL overrides to Wine builtins.
+    func setDXVK(bottle: Bottle, enable: Bool, library: LibraryStore) -> ConsoleSession {
+        var b = bottle; b.dxvk = enable; library.updateBottle(b)
+        if enable { return runWinetricks(verbs: ["dxvk"], bottle: bottle) }
+        return resetOverridesSession(bottle: bottle,
+                                     dlls: ["d3d9", "d3d10core", "d3d11", "dxgi"],
+                                     label: "Disable DXVK")
+    }
+
+    /// Enable or disable DXMT. Enable downloads the latest native build, drops
+    /// its DLLs into the bottle, and sets DLL overrides; disable resets them.
+    func setDXMT(bottle: Bottle, enable: Bool, library: LibraryStore) -> ConsoleSession {
+        var b = bottle; b.dxmt = enable; library.updateBottle(b)
+        let title = enable ? "Install DXMT" : "Disable DXMT"
+        let session = ConsoleSession(title: title, subtitle: "Bottle \(bottle.shortLabel)")
+        guard let wine = winePath else {
+            session.phase = .error; session.append("Wine runtime not ready yet."); return session
+        }
+        let prefix = prefixURL(for: bottle.id)
+        Task { @MainActor in
+            if enable {
+                session.append("Fetching latest DXMT…")
+                do {
+                    let version = try await DXMTInstaller.install(into: prefix)
+                    session.append("→ DXMT \(version) installed into the bottle.")
+                    await self.applyOverrides(["d3d11", "dxgi"], native: true,
+                                              wine: wine, prefix: prefix, session: session)
+                    session.append("→ DXMT enabled.")
+                    session.phase = .exited
+                    Notifier.notify("DXMT enabled", "Bottle \(bottle.shortLabel) now uses DXMT for Direct3D.")
+                } catch {
+                    session.phase = .error
+                    session.append("error: \(error.localizedDescription)")
+                }
+            } else {
+                await self.applyOverrides(["d3d11", "dxgi"], native: false,
+                                          wine: wine, prefix: prefix, session: session)
+                session.append("→ DXMT disabled (Wine builtins restored).")
+                session.phase = .exited
+            }
+        }
+        return session
+    }
+
+    /// Enable or disable Apple D3DMetal — only meaningful with the Wine GPTK
+    /// engine, which already ships the D3DMetal libraries. For other engines we
+    /// surface a hint to switch first.
+    func setD3DMetal(bottle: Bottle, enable: Bool, library: LibraryStore) -> ConsoleSession {
+        let title = enable ? "Enable D3DMetal" : "Disable D3DMetal"
+        let session = ConsoleSession(title: title, subtitle: "Bottle \(bottle.shortLabel)")
+        guard let wine = winePath else {
+            session.phase = .error; session.append("Wine runtime not ready yet."); return session
+        }
+        let isGPTK = engineID == "sikarugir-gptk"
+        if enable && !isGPTK {
+            session.append("D3DMetal needs the Wine GPTK engine.")
+            session.append("Open Tweaks → Change engine… → pick \"Wine GPTK\", then try again.")
+            session.phase = .error
+            return session
+        }
+        var b = bottle; b.d3dMetal = enable; library.updateBottle(b)
+        let prefix = prefixURL(for: bottle.id)
+        Task { @MainActor in
+            await self.applyOverrides(["d3d11", "dxgi", "d3d12", "d3d12core"], native: enable,
+                                      wine: wine, prefix: prefix, session: session)
+            session.append(enable ? "→ D3DMetal enabled (via WineGPTK)." : "→ D3DMetal disabled.")
+            session.phase = .exited
+        }
+        return session
+    }
+
+    // MARK: helpers
+
+    private func resetOverridesSession(bottle: Bottle, dlls: [String], label: String) -> ConsoleSession {
+        let session = ConsoleSession(title: label, subtitle: "Bottle \(bottle.shortLabel)")
+        guard let wine = winePath else {
+            session.phase = .error; session.append("Wine runtime not ready yet."); return session
+        }
+        let prefix = prefixURL(for: bottle.id)
+        Task { @MainActor in
+            await self.applyOverrides(dlls, native: false, wine: wine, prefix: prefix, session: session)
+            session.append("→ Wine builtins restored.")
+            session.phase = .exited
+        }
+        return session
+    }
+
+    /// Adds or removes `HKCU\Software\Wine\DllOverrides\<dll>` entries.
+    private func applyOverrides(_ dlls: [String], native: Bool, wine: String, prefix: URL,
+                                session: ConsoleSession) async {
+        for dll in dlls {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: wine)
+            if native {
+                p.arguments = ["reg", "add", "HKCU\\Software\\Wine\\DllOverrides",
+                               "/v", dll, "/d", "native", "/f"]
+            } else {
+                p.arguments = ["reg", "delete", "HKCU\\Software\\Wine\\DllOverrides",
+                               "/v", dll, "/f"]
+            }
+            var env = baseEnv(prefix: prefix, wine: wine); env["WINEDEBUG"] = "-all"
+            p.environment = env
+            p.standardOutput = FileHandle.nullDevice
+            p.standardError = FileHandle.nullDevice
+            session.append(native
+                           ? "$ wine reg add DllOverrides/\(dll) = native"
+                           : "$ wine reg delete DllOverrides/\(dll)")
+            _ = await runStreaming(p, into: session)
+        }
+    }
+
     /// Runs a Windows installer (.exe or .msi) inside the given bottle, streaming
     /// the wine output to a ConsoleSession. The installer's own GUI handles the
     /// next/finish clicks; we just keep wine alive and surface its logs.

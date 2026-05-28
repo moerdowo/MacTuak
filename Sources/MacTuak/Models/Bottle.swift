@@ -7,6 +7,14 @@ struct Bottle: Identifiable, Codable, Equatable {
     var wineVersion: String     // informational, e.g. "9.0"
     var windowsVersion: String? = nil   // win7 / win10 / win11
     var arch: String? = nil             // win32 / win64
+    // D3D backends installed/active in this bottle.
+    var dxvk: Bool? = nil               // DXVK — DirectX → Vulkan → MoltenVK
+    var dxmt: Bool? = nil               // DXMT — Direct3D 11 → Metal
+    var d3dMetal: Bool? = nil           // Apple D3DMetal (GPTK) — D3D12 → Metal
+
+    var useDXVK: Bool { dxvk ?? false }
+    var useDXMT: Bool { dxmt ?? false }
+    var useD3DMetal: Bool { d3dMetal ?? false }
 
     var shortLabel: String { label.components(separatedBy: " · ").first ?? label }
     var winVersion: String { windowsVersion ?? "win10" }
