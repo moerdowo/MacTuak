@@ -8,6 +8,7 @@ struct MainToolbar: View {
     @Binding var query: String
     var onAdd: () -> Void
     var onShowLicenses: () -> Void
+    var onChangeEngine: () -> Void
 
     var body: some View {
         let accent = settings.accentColor
@@ -50,7 +51,7 @@ struct MainToolbar: View {
                 (value: "list", label: "List", system: "list.bullet"),
             ], value: Binding(get: { settings.view }, set: { settings.view = $0 }))
 
-            TweaksButton(onShowLicenses: onShowLicenses)
+            TweaksButton(onShowLicenses: onShowLicenses, onChangeEngine: onChangeEngine)
 
             PillButton(primary: true, accent: accent, action: onAdd) {
                 Image(systemName: "plus").font(.system(size: 13, weight: .semibold))

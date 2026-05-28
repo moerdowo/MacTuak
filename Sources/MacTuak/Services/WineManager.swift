@@ -107,7 +107,8 @@ struct RuntimeState: Equatable, Sendable {
 private struct InstalledInfo: Codable, Sendable {
     var version: String
     var binary: String
-    var channel: String? = nil
+    var channel: String? = nil   // legacy
+    var engine: String? = nil    // WineEngine id
 }
 
 /// Manages a self-updating, app-owned (bundled) stable Wine runtime and runs
@@ -124,8 +125,9 @@ final class WineManager: ObservableObject {
     private var processes: [String: Process] = [:]
     private var watchers: [String: Process] = [:]
 
-    /// Wine channel to track (stable/staging/devel). Set from Settings.
-    var channel = "stable"
+    /// Selected Wine engine id (see WineEngines). Set from Settings.
+    /// Empty until the user picks one — keeps bootstrap from auto-downloading.
+    var engineID = ""
 
     init() { bootstrap() }
 
@@ -181,20 +183,20 @@ final class WineManager: ObservableObject {
         }
     }
 
-    /// Checks the latest stable Gcenx release and installs it if newer (or if no
+    /// Checks the active engine's latest build and installs it if newer (or if no
     /// runtime is present). `force` re-confirms even when already up to date.
     func checkForUpdate(force: Bool) {
         guard !runtime.isBusy else { return }
+        guard let engine = WineEngines.find(engineID) else { return }   // wait until an engine is chosen
         let haveActive = winePath != nil
         let currentInfo = Self.loadInfo()
-        let channel = self.channel
 
         Task.detached(priority: .utility) {
             do {
-                let release = try await WineInstaller.latest(channel: channel)
+                let release = try await WineInstaller.latest(engine: engine)
 
-                // Already on the latest managed build for this channel?
-                if let info = currentInfo, info.version == release.version, (info.channel ?? "stable") == channel,
+                // Already on the latest build for this engine?
+                if let info = currentInfo, info.version == release.version, (info.engine ?? "gcenx-stable") == engine.id,
                    FileManager.default.isExecutableFile(atPath: info.binary) {
                     await self.setActive(path: info.binary, version: info.version, system: false, kind: .ready)
                     return
@@ -222,7 +224,7 @@ final class WineManager: ObservableObject {
                     throw NSError(domain: "MacTuak", code: 4, userInfo: [NSLocalizedDescriptionKey: "wine binary missing after install"])
                 }
                 try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin)
-                Self.saveInfo(InstalledInfo(version: release.version, binary: bin, channel: channel))
+                Self.saveInfo(InstalledInfo(version: release.version, binary: bin, channel: nil, engine: engine.id))
                 try? fm.removeItem(at: archive)
 
                 await self.setActive(path: bin, version: release.version, system: false, kind: .ready)

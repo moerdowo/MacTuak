@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var showLicenses = false
     @State private var showAppStore = false
     @State private var storeConsole: ConsoleSession?
+    @State private var showEnginePicker = false
+    @State private var enginePickerMode: EnginePickerSheet.Mode = .onboarding
     @State private var prefilledURL: URL?
     @State private var recentlyUninstalled: WineApp?
     @State private var undoTask: Task<Void, Never>?
@@ -80,8 +82,20 @@ struct ContentView: View {
                 OnboardingOverlay(accent: accent, onContinue: { onboardingDismissed = true })
                     .zIndex(80)
             }
+            if showEnginePicker {
+                EnginePickerSheet(mode: enginePickerMode, accent: accent, selected: settings.engine,
+                                  onChoose: { engine in
+                                      settings.engine = engine.id
+                                      settings.engineChosen = true
+                                      wine.engineID = engine.id
+                                      wine.checkForUpdate(force: true)
+                                      showEnginePicker = false
+                                  },
+                                  onClose: { showEnginePicker = false })
+                    .zIndex(90)
+            }
         }
-        .onAppear { wine.channel = settings.wineChannel }
+        .onAppear { initEngineSelection() }
         .environment(\.palette, p)
         .preferredColorScheme(settings.dark ? .dark : .light)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: launch != nil)
@@ -101,7 +115,11 @@ struct ContentView: View {
             MainToolbar(title: sectionTitle,
                         subtitle: "\(list.count) app\(list.count == 1 ? "" : "s")",
                         query: $query, onAdd: openAdd,
-                        onShowLicenses: { showLicenses = true })
+                        onShowLicenses: { showLicenses = true },
+                        onChangeEngine: {
+                            enginePickerMode = .settings
+                            showEnginePicker = true
+                        })
 
             ScrollView {
                 if list.isEmpty {
@@ -215,8 +233,26 @@ struct ContentView: View {
     private func openAdd() { adding = true }
 
     private var showOnboarding: Bool {
-        !onboardingDismissed && library.apps.isEmpty &&
+        !onboardingDismissed && !settings.engine.isEmpty && library.apps.isEmpty &&
         [.detecting, .needsDownload, .downloading, .extracting, .installing].contains(wine.runtime.kind)
+    }
+
+    /// First-run engine selection + legacy migration. Drives the picker sheet.
+    private func initEngineSelection() {
+        if settings.engine.isEmpty {
+            let hasInstall = FileManager.default.fileExists(atPath: WineManager.infoURL.path)
+            if hasInstall {
+                // Existing user upgrading from a channel-based build — assume
+                // the default and skip the picker.
+                settings.engine = WineEngines.defaultEngine.id
+                settings.engineChosen = true
+            } else {
+                enginePickerMode = .onboarding
+                showEnginePicker = true
+            }
+        }
+        wine.engineID = settings.engine
+        if !settings.engine.isEmpty { wine.checkForUpdate(force: false) }
     }
 
     private func runApp(_ app: WineApp, admin: Bool = false) {

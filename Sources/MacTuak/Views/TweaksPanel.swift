@@ -6,6 +6,7 @@ struct TweaksButton: View {
     @EnvironmentObject var wine: WineManager
     @Environment(\.palette) private var p
     var onShowLicenses: () -> Void
+    var onChangeEngine: () -> Void
     @State private var open = false
 
     var body: some View {
@@ -17,7 +18,8 @@ struct TweaksButton: View {
         .buttonStyle(.plain)
         .solidSurface(RoundedRectangle(cornerRadius: 10, style: .continuous), p)
         .popover(isPresented: $open, arrowEdge: .bottom) {
-            TweaksContent(onShowLicenses: { open = false; onShowLicenses() })
+            TweaksContent(onShowLicenses: { open = false; onShowLicenses() },
+                          onChangeEngine: { open = false; onChangeEngine() })
                 .environmentObject(settings).environmentObject(wine)
                 .environment(\.palette, p)
                 .frame(width: 280)
@@ -29,6 +31,7 @@ private struct TweaksContent: View {
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var wine: WineManager
     var onShowLicenses: () -> Void
+    var onChangeEngine: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -54,11 +57,17 @@ private struct TweaksContent: View {
                    options: [("grid", "Grid"), ("list", "List")])
 
             section("Wine Runtime")
-            picker("Channel", selection: Binding(get: { settings.wineChannel }, set: { newValue in
-                settings.wineChannel = newValue
-                wine.channel = newValue
-                wine.checkForUpdate(force: true)
-            }), options: [("stable", "Stable"), ("staging", "Staging"), ("devel", "Devel")])
+            HStack {
+                Text("Engine").font(.system(size: 12)).foregroundStyle(.secondary)
+                Spacer()
+                Text(settings.currentEngine.name).font(.system(size: 12, weight: .semibold))
+            }
+            Button(action: onChangeEngine) {
+                HStack(spacing: 6) {
+                    Image(systemName: "wineglass").font(.system(size: 11))
+                    Text("Change engine…").font(.system(size: 12, weight: .medium))
+                }
+            }.controlSize(.small)
             HStack(alignment: .top, spacing: 8) {
                 Text(wine.runtime.statusText).font(.system(size: 11.5)).foregroundStyle(.secondary)
                 Spacer()

@@ -12,6 +12,55 @@ enum WineInstaller {
 
     private static let releasesAPI = URL(string:
         "https://api.github.com/repos/Gcenx/macOS_Wine_builds/releases?per_page=50")!
+    private static let sikarugirAPI = URL(string:
+        "https://api.github.com/repos/Sikarugir-App/Engines/releases?per_page=10")!
+
+    /// Generalized engine fetcher.
+    static func latest(engine: WineEngine) async throws -> Release {
+        switch engine.kind {
+        case .gcenx(let channel):     return try await latest(channel: channel)
+        case .sikarugir(let prefix):  return try await latestSikarugir(prefix: prefix)
+        }
+    }
+
+    /// Sikarugir-App/Engines hosts every variant in a single release. Pick the
+    /// asset whose name starts with `prefix` and has the highest version suffix
+    /// according to a token-by-token integer compare.
+    static func latestSikarugir(prefix: String) async throws -> Release {
+        var req = URLRequest(url: sikarugirAPI)
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("MacTuak", forHTTPHeaderField: "User-Agent")
+        req.timeoutInterval = 30
+        let (data, _) = try await URLSession.shared.data(for: req)
+        let releases = (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+        var best: (ver: String, name: String, url: URL)?
+        for rel in releases {
+            let assets = rel["assets"] as? [[String: Any]] ?? []
+            for a in assets {
+                guard let name = a["name"] as? String,
+                      let urlStr = a["browser_download_url"] as? String,
+                      let url = URL(string: urlStr),
+                      name.hasPrefix(prefix), name.hasSuffix(".tar.xz") else { continue }
+                let ver = String(name.dropFirst(prefix.count).dropLast(".tar.xz".count))
+                if best == nil || compareVersions(ver, best!.ver) > 0 {
+                    best = (ver, name, url)
+                }
+            }
+        }
+        guard let b = best else { throw err("No \(prefix) build found in Sikarugir-App/Engines.") }
+        return Release(version: b.ver, assetName: b.name, url: b.url)
+    }
+
+    /// Token-wise integer compare: "10.0_3" > "10.0_1" > "2.5.0".
+    private static func compareVersions(_ a: String, _ b: String) -> Int {
+        let split = CharacterSet(charactersIn: "._-+")
+        let at = a.components(separatedBy: split).compactMap { Int($0) }
+        let bt = b.components(separatedBy: split).compactMap { Int($0) }
+        for i in 0..<min(at.count, bt.count) {
+            if at[i] != bt[i] { return at[i] > bt[i] ? 1 : -1 }
+        }
+        return at.count - bt.count
+    }
 
     /// Newest release that ships a `wine-<channel>-*-osx64.tar.xz` asset.
     /// channel ∈ {stable, staging, devel}.

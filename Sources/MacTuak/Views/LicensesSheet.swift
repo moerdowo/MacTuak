@@ -35,7 +35,7 @@ struct LicensesSheet: View {
                         section("Wine") {
                             kv("License", "GNU LGPL v2.1 or later")
                             kv("Copyright", "© 1993–2026 the Wine project authors")
-                            kv("Installed", wine.runtime.version.isEmpty ? "—" : "\(wine.runtime.version) (\(wine.channel))")
+                            kv("Installed", wine.runtime.version.isEmpty ? "—" : "\(wine.runtime.version) (\(wine.engineID))")
                             HStack(spacing: 8) {
                                 docButton("License (LGPL 2.1)", file: "Wine-COPYING.LIB")
                                 docButton("Notice", file: "Wine-LICENSE")
