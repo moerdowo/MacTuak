@@ -15,6 +15,7 @@ struct BottleManagerSheet: View {
     @State private var confirmReset = false
     @State private var confirmDelete = false
     @State private var newBottle = false
+    @State private var showExplorer = false
 
     private var selected: Bottle? { library.bottles.first { $0.id == selection } }
 
@@ -62,6 +63,12 @@ struct BottleManagerSheet: View {
                     console = wine.initBottle(b)
                     newBottle = false
                 } onCancel: { newBottle = false }.zIndex(10)
+            }
+            if showExplorer, let b = selected {
+                WinetricksExplorerSheet(bottle: b, accent: accent,
+                                        onConsole: { console = $0 },
+                                        onClose: { showExplorer = false })
+                    .zIndex(5)
             }
         }
         .onAppear { if selection == nil { selection = library.bottles.first?.id } }
@@ -111,6 +118,7 @@ struct BottleManagerSheet: View {
             BottleDetail(bottle: b, accent: accent,
                          onConsole: { console = $0 },
                          onScan: { scanResults = BottleScanner.scan(prefix: wine.prefixURL(for: b.id)) },
+                         onBrowse: { showExplorer = true },
                          onReset: { confirmReset = true },
                          onDelete: { confirmDelete = true })
                 .id(b.id)
@@ -146,6 +154,7 @@ private struct BottleDetail: View {
     let accent: Color
     var onConsole: (ConsoleSession) -> Void
     var onScan: () -> Void
+    var onBrowse: () -> Void
     var onReset: () -> Void
     var onDelete: () -> Void
 
@@ -155,9 +164,11 @@ private struct BottleDetail: View {
     @State private var verbs: Set<String> = []
 
     init(bottle: Bottle, accent: Color, onConsole: @escaping (ConsoleSession) -> Void,
-         onScan: @escaping () -> Void, onReset: @escaping () -> Void, onDelete: @escaping () -> Void) {
+         onScan: @escaping () -> Void, onBrowse: @escaping () -> Void,
+         onReset: @escaping () -> Void, onDelete: @escaping () -> Void) {
         self.bottle = bottle; self.accent = accent
-        self.onConsole = onConsole; self.onScan = onScan; self.onReset = onReset; self.onDelete = onDelete
+        self.onConsole = onConsole; self.onScan = onScan; self.onBrowse = onBrowse
+        self.onReset = onReset; self.onDelete = onDelete
         _label = State(initialValue: bottle.label)
         _winVer = State(initialValue: bottle.winVersion)
     }
@@ -211,6 +222,7 @@ private struct BottleDetail: View {
                     toolButton("Control Panel", "slider.horizontal.3") { wine.runTool("control", bottle: bottle) }
                     toolButton("Open C: Drive", "folder") { wine.openDriveC(bottle: bottle) }
                     toolButton("Scan for Apps", "magnifyingglass") { onScan() }
+                    toolButton("Browse winetricks…", "puzzlepiece.extension") { onBrowse() }
                 }
 
                 Divider()

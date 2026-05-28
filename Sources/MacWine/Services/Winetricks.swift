@@ -33,4 +33,78 @@ enum Winetricks {
         ("gdiplus", "GDI+"),
         ("xact", "XACT audio"),
     ]
+
+    /// Categories winetricks groups verbs under.
+    static let categories: [(name: String, label: String, system: String)] = [
+        ("dlls",       "DLLs",       "puzzlepiece.extension"),
+        ("fonts",      "Fonts",      "textformat"),
+        ("apps",       "Apps",       "app.fill"),
+        ("settings",   "Settings",   "gearshape"),
+        ("games",      "Games",      "gamecontroller"),
+        ("benchmarks", "Benchmarks", "speedometer"),
+        ("prefix",     "Prefix",     "wineglass"),
+    ]
+}
+
+struct WinetricksVerb: Hashable, Identifiable {
+    var id: String { name }
+    let name: String
+    let description: String
+}
+
+struct WinetricksCategory: Identifiable {
+    var id: String { name }
+    let name: String
+    let label: String
+    let system: String
+    let verbs: [WinetricksVerb]
+}
+
+extension Winetricks {
+    /// Runs `winetricks <category> list` and parses verb/description rows.
+    nonisolated static func listVerbs(category: String, scriptPath: URL,
+                                      wine: String, prefix: URL, arch: String,
+                                      toolsPath: String?) -> [WinetricksVerb] {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = [scriptPath.path, category, "list"]
+        var env = ProcessInfo.processInfo.environment
+        env["WINE"] = wine
+        env["WINESERVER"] = (wine as NSString).deletingLastPathComponent + "/wineserver"
+        env["WINEPREFIX"] = prefix.path
+        env["WINEARCH"] = arch
+        let wineBin = (wine as NSString).deletingLastPathComponent
+        var pathParts = [wineBin]
+        if let toolsPath { pathParts.append(toolsPath) }
+        pathParts += ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+        env["PATH"] = pathParts.joined(separator: ":")
+        proc.environment = env
+
+        let out = Pipe(); proc.standardOutput = out; proc.standardError = Pipe()
+        do { try proc.run(); proc.waitUntilExit() } catch { return [] }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        let text = String(data: data, encoding: .utf8) ?? ""
+        return parse(text)
+    }
+
+    nonisolated private static func parse(_ text: String) -> [WinetricksVerb] {
+        var verbs: [WinetricksVerb] = []
+        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("="), !line.hasPrefix("-"),
+                  !line.lowercased().hasPrefix("warning"),
+                  !line.lowercased().hasPrefix("using winetricks"),
+                  !line.lowercased().hasPrefix("usage:") else { continue }
+            guard let split = line.firstIndex(where: { $0.isWhitespace }) else { continue }
+            let name = String(line[..<split])
+            // Verb names are short tokens (letters, digits, _ - +); skip anything else.
+            let allowed = CharacterSet(charactersIn:
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-+")
+            guard !name.isEmpty,
+                  name.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { continue }
+            let desc = line[split...].trimmingCharacters(in: .whitespaces)
+            verbs.append(WinetricksVerb(name: name, description: desc))
+        }
+        return verbs
+    }
 }

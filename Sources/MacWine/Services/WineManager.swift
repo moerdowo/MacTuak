@@ -97,6 +97,8 @@ private struct InstalledInfo: Codable, Sendable {
 final class WineManager: ObservableObject {
     @Published var runtime = RuntimeState()
     @Published var winePath: String?
+    @Published var winetricksCatalog: [WinetricksCategory] = []
+    @Published var catalogLoading = false
 
     private var activeVersion = ""
     private var activeIsSystem = false
@@ -674,6 +676,36 @@ final class WineManager: ObservableObject {
     /// Sets the bottle's reported Windows version via winetricks (win7/win10/win11).
     func setWindowsVersion(_ bottle: Bottle) -> ConsoleSession {
         runWinetricks(verbs: [bottle.winVersion], bottle: bottle)
+    }
+
+    /// Populates `winetricksCatalog` by running `winetricks <category> list` for
+    /// each known category. Cached after the first successful load.
+    func loadWinetricksCatalog(for bottle: Bottle) {
+        guard !catalogLoading, winetricksCatalog.isEmpty, let wine = winePath else { return }
+        catalogLoading = true
+        prepareBundledTools()
+        let prefix = prefixURL(for: bottle.id)
+        let arch = bottle.winArch
+        let toolsPath = bundledToolsDir?.path
+
+        Task.detached(priority: .utility) {
+            var result: [WinetricksCategory] = []
+            if let script = try? await Winetricks.ensureInstalled() {
+                for cat in Winetricks.categories {
+                    let verbs = Winetricks.listVerbs(
+                        category: cat.name, scriptPath: script,
+                        wine: wine, prefix: prefix, arch: arch, toolsPath: toolsPath)
+                    if !verbs.isEmpty {
+                        result.append(WinetricksCategory(name: cat.name, label: cat.label,
+                                                          system: cat.system, verbs: verbs))
+                    }
+                }
+            }
+            await MainActor.run {
+                self.winetricksCatalog = result
+                self.catalogLoading = false
+            }
+        }
     }
 
     /// Runs a Windows installer (.exe or .msi) inside the given bottle, streaming
