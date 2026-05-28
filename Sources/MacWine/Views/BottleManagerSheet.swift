@@ -60,7 +60,7 @@ struct BottleManagerSheet: View {
                 NewBottleSheet(accent: accent) { label, ver, arch in
                     let b = library.addBottle(label: label, windowsVersion: ver, arch: arch)
                     selection = b.id
-                    console = wine.initBottle(b)
+                    console = wine.initBottle(b, applyVersion: true)
                     newBottle = false
                 } onCancel: { newBottle = false }.zIndex(10)
             }

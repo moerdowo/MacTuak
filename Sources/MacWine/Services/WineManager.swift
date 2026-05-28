@@ -559,22 +559,62 @@ final class WineManager: ObservableObject {
         }
     }
 
-    /// Initializes (or repairs) a bottle's WINEPREFIX via wineboot, honoring its arch.
-    func initBottle(_ bottle: Bottle) -> ConsoleSession {
+    /// Initializes (or repairs) a bottle's WINEPREFIX via wineboot, honoring its
+    /// arch. When `applyVersion` is true (used for newly-created bottles), the
+    /// chosen Windows version is applied via `winetricks <ver>` after wineboot,
+    /// so winecfg reflects the user's pick instead of Wine's default Win10.
+    func initBottle(_ bottle: Bottle, applyVersion: Bool = false) -> ConsoleSession {
         let session = ConsoleSession(title: "Initialize \(bottle.shortLabel)", subtitle: "wineboot · \(bottle.winArch)")
         guard let wine = winePath else {
             session.phase = .error; session.append("Wine runtime not ready yet."); return session
         }
         let prefix = prefixURL(for: bottle.id)
         try? FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: wine)
-        p.arguments = ["wineboot", "-u"]
-        var env = baseEnv(prefix: prefix, wine: wine)
-        env["WINEARCH"] = bottle.winArch
-        p.environment = env
-        session.append("$ WINEARCH=\(bottle.winArch) WINEPREFIX=\(prefix.path) wineboot -u")
-        stream(p, into: session)
+
+        Task { @MainActor in
+            // 1. wineboot
+            let boot = Process()
+            boot.executableURL = URL(fileURLWithPath: wine)
+            boot.arguments = ["wineboot", "-u"]
+            var env = baseEnv(prefix: prefix, wine: wine)
+            env["WINEARCH"] = bottle.winArch
+            boot.environment = env
+            session.append("$ WINEARCH=\(bottle.winArch) WINEPREFIX=\(prefix.path) wineboot -u")
+            let bootCode = await self.runStreaming(boot, into: session)
+            guard bootCode == 0 else {
+                session.append("→ wineboot exited with code \(bootCode).")
+                session.phase = .error
+                return
+            }
+
+            // 2. apply Windows version (only if user picked something other than the default win10)
+            if applyVersion && bottle.winVersion != "win10" {
+                await self.ensureWinetricksDeps(into: session)
+                session.append("Setting Windows version → \(bottle.winVersion)…")
+                guard let script = try? await Winetricks.ensureInstalled() else {
+                    session.append("→ winetricks unavailable; bottle is initialized but in default Win10.")
+                    session.phase = .exited
+                    return
+                }
+                let wt = Process()
+                wt.executableURL = URL(fileURLWithPath: "/bin/sh")
+                wt.arguments = [script.path, "-q", bottle.winVersion]
+                var wtEnv = baseEnv(prefix: prefix, wine: wine)
+                wtEnv["WINE"] = wine
+                wtEnv["WINESERVER"] = (wine as NSString).deletingLastPathComponent + "/wineserver"
+                wtEnv["WINEARCH"] = bottle.winArch
+                wt.environment = wtEnv
+                session.append("$ winetricks -q \(bottle.winVersion)")
+                let code = await self.runStreaming(wt, into: session)
+                let ok = code == 0
+                session.append(ok ? "→ bottle ready (Windows \(bottle.winVersion.dropFirst(3)))."
+                                  : "→ winetricks exited with code \(code).")
+                session.phase = ok ? .exited : .error
+            } else {
+                session.append("→ bottle ready.")
+                session.phase = .exited
+            }
+        }
         return session
     }
 
