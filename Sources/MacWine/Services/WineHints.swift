@@ -33,6 +33,14 @@ enum WineHints {
                 message: "The bundled Wine is wow64 — only 64-bit prefixes. 32-bit Windows apps still run inside one via WoW64; delete this bottle and create a new one (it'll be 64-bit automatically).")
         }
 
+        // DXVK 2.x can't initialize on MoltenVK (no geometry shader on Apple GPUs).
+        if l.contains("dxvk: no adapters found") ||
+           l.contains("'geometryshader'") ||
+           l.contains("dxvk::dxvkerror") {
+            return Hint(key: "dxvk-no-adapter",
+                message: "DXVK 2.x needs Vulkan features that MoltenVK on Apple Silicon doesn't expose (geometry shaders). For Electron/Chromium apps, the right fix is to skip GPU accel entirely: add --disable-gpu in Edit Info → Launch Options. For other apps, try the older DXVK (`winetricks dxvk1103`) or use a Wine build with Apple GPTK patches (Whisky/CrossOver).")
+        }
+
         // Direct3D failing on wined3d (OpenGL) on macOS — install DXVK.
         if l.contains("requested d3d feature levels") ||
            l.contains("gl_invalid_framebuffer_operation") ||
