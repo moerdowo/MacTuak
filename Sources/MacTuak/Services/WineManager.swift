@@ -212,7 +212,10 @@ final class WineManager: ObservableObject {
                     .appendingPathComponent("mactuak-stage-\(UUID().uuidString)", isDirectory: true)
                 try WineInstaller.extract(archive, into: staging)
                 guard WineInstaller.findWineBinary(in: staging) != nil else {
-                    throw NSError(domain: "MacTuak", code: 3, userInfo: [NSLocalizedDescriptionKey: "No wine binary in archive"])
+                    let top = (try? FileManager.default.contentsOfDirectory(atPath: staging.path))?.joined(separator: ", ") ?? "(empty)"
+                    throw NSError(domain: "MacTuak", code: 3, userInfo: [
+                        NSLocalizedDescriptionKey: "No wine binary in archive. Top-level: \(top)"
+                    ])
                 }
 
                 await MainActor.run { self.runtime = RuntimeState(kind: .installing, version: release.version) }

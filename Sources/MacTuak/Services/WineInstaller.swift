@@ -111,16 +111,23 @@ enum WineInstaller {
         }
     }
 
-    /// Finds the wine binary inside an extracted tree (prefers wine64).
+    /// Finds the wine binary inside an extracted tree (prefers wine64). Matches
+    /// `<anything>/bin/wine64` or `<anything>/bin/wine` so it works with both
+    /// Gcenx layouts (`Wine Stable.app/Contents/Resources/wine/bin/wine`) and
+    /// Sikarugir/Whisky-style layouts (`wswine.bundle/bin/wine`).
     static func findWineBinary(in dir: URL) -> String? {
         let fm = FileManager.default
         guard let en = fm.enumerator(at: dir, includingPropertiesForKeys: nil) else { return nil }
         var wine64: String?
         var wine: String?
         for case let f as URL in en {
-            let p = f.path
-            if p.hasSuffix("/wine/bin/wine64") { wine64 = p }
-            else if p.hasSuffix("/wine/bin/wine") { wine = p }
+            let parent = f.deletingLastPathComponent().lastPathComponent
+            guard parent == "bin" else { continue }
+            switch f.lastPathComponent {
+            case "wine64": wine64 = f.path
+            case "wine":   wine = f.path
+            default: continue
+            }
         }
         return wine64 ?? wine
     }
