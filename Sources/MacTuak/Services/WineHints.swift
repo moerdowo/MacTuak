@@ -51,6 +51,13 @@ enum WineHints {
                 message: "Wine's built-in wined3d can't do modern Direct3D on macOS. Install dxvk from the Winetricks Browser to route D3D9/10/11 through Vulkan → MoltenVK → Metal. If this is a Chromium/Electron app, also add --disable-gpu in Edit Info → Launch Options → Arguments.")
         }
 
+        // esync mismatch — wineserver wasn't started with esync but the
+        // launching wine wants it. Common after engine swaps.
+        if l.contains("err:esync") || l.contains("wineserver instances are running without wineesync") {
+            return Hint(key: "esync-stale",
+                message: "Esync clashed with the existing wineserver. In Edit Info → Launch Options, turn off Esync; or use Bottle Manager → Force Quit on the bottle, then relaunch.")
+        }
+
         // App needs a DLL that isn't installed.
         if l.contains("err:module:") && (l.contains("module not found") || l.contains("loadlibrary")) {
             return Hint(key: "missing-dll",

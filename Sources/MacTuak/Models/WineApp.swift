@@ -6,7 +6,7 @@ struct LaunchOptions: Codable, Equatable {
     var workingDir: String = ""
     var environment: String = ""    // "KEY=VALUE" per line
     var winedebug: String = ""      // e.g. "-all" to silence, "" for default
-    var esync: Bool = true
+    var esync: Bool = false  // opt-in perf toggle; many wine builds bail when wineserver wasn't started with it
     var retina: Bool = false
     var virtualDesktop: String = "" // "" = off, else "1280x720"
 }
