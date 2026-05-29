@@ -460,15 +460,9 @@ final class WineManager: ObservableObject {
         proc.executableURL = URL(fileURLWithPath: wine)
         proc.arguments = args
 
-        var env = ProcessInfo.processInfo.environment
-        env["WINEPREFIX"] = prefix.path
-        let wineBin = (wine as NSString).deletingLastPathComponent
-        env["PATH"] = "\(wineBin):/usr/bin:/bin:/usr/sbin:/sbin:" + (env["PATH"] ?? "")
-        // dyld fallback so wine's runtime `dlopen("libfreetype.6.dylib")` /
-        // libgnutls / etc. find the dylibs we drop next to wswine.bundle.
-        let managedRoot = Self.managedDir.path
-        let existingDyld = env["DYLD_FALLBACK_LIBRARY_PATH"] ?? "\(NSHomeDirectory())/lib:/usr/local/lib:/usr/lib"
-        env["DYLD_FALLBACK_LIBRARY_PATH"] = "\(managedRoot):\(existingDyld)"
+        // Shared env builder — gets PATH (wineBin + bundled tools) and the
+        // dyld fallback search path right for the engine we're about to launch.
+        var env = baseEnv(prefix: prefix, wine: wine)
         env["WINEESYNC"] = opts.esync ? "1" : "0"
         if !opts.winedebug.isEmpty { env["WINEDEBUG"] = opts.winedebug }
         for line in opts.environment.split(separator: "\n") {
@@ -628,13 +622,44 @@ final class WineManager: ObservableObject {
         if let tools = bundledToolsDir?.path { parts.append(tools) }
         parts += ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
         env["PATH"] = parts.joined(separator: ":") + ":" + (env["PATH"] ?? "")
-        // Wine `dlopen`s libfreetype / libgnutls / etc. by bare name — make dyld
-        // search the managed Wine dir (where we drop the bundled shims) before
-        // falling back to system paths.
-        let managed = Self.managedDir.path
-        let existing = env["DYLD_FALLBACK_LIBRARY_PATH"] ?? "\(NSHomeDirectory())/lib:/usr/local/lib:/usr/lib"
-        env["DYLD_FALLBACK_LIBRARY_PATH"] = "\(managed):\(existing)"
+        env["DYLD_FALLBACK_LIBRARY_PATH"] = Self.dyldPath(forWine: wine, existing: env["DYLD_FALLBACK_LIBRARY_PATH"])
         return env
+    }
+
+    /// Builds the DYLD_FALLBACK_LIBRARY_PATH that lets wine's runtime
+    /// `dlopen("libfreetype.6.dylib")` find our bundled shims. Walks back from
+    /// the passed wine binary to find its engine root, then discovers every
+    /// other installed engine dir + the legacy root for back-compat. Static
+    /// + nonisolated so admin paths on background queues can call it too.
+    nonisolated static func dyldPath(forWine wineBinary: String, existing: String? = nil) -> String {
+        var paths: [String] = []
+        let root = managedDir.path
+        // Engine root for the wine we're about to launch — same dir the dylibs
+        // got installed into by installRuntimeLibs.
+        var p: String = (wineBinary as NSString).deletingLastPathComponent
+        for _ in 0..<6 {
+            p = (p as NSString).deletingLastPathComponent
+            if p.hasPrefix(root),
+               FileManager.default.fileExists(atPath: p + "/libfreetype.6.dylib") {
+                if !paths.contains(p) { paths.append(p) }
+                break
+            }
+        }
+        // Any other installed engine dirs (so a per-app override still works).
+        if let subs = try? FileManager.default.contentsOfDirectory(atPath: root) {
+            for sub in subs {
+                let dir = root + "/" + sub
+                if FileManager.default.fileExists(atPath: dir + "/libfreetype.6.dylib"),
+                   !paths.contains(dir) {
+                    paths.append(dir)
+                }
+            }
+        }
+        // Legacy flat layout, just in case the migration left dylibs there.
+        if !paths.contains(root) { paths.append(root) }
+        let fallback = existing ?? "\(NSHomeDirectory())/lib:/usr/local/lib:/usr/lib"
+        paths.append(fallback)
+        return paths.joined(separator: ":")
     }
 
     private func applyRetina(_ on: Bool, wine: String, prefix: URL) {
@@ -790,7 +815,7 @@ final class WineManager: ObservableObject {
                 var env = ProcessInfo.processInfo.environment
                 env["WINEPREFIX"] = prefix.path
                 env["WINEDEBUG"] = "-all"
-                env["DYLD_FALLBACK_LIBRARY_PATH"] = Self.managedDir.path
+                env["DYLD_FALLBACK_LIBRARY_PATH"] = WineManager.dyldPath(forWine: wine, existing: env["DYLD_FALLBACK_LIBRARY_PATH"])
                 p.environment = env
                 let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
                 do { try p.run(); p.waitUntilExit() } catch { cont.resume(returning: []); return }
@@ -872,7 +897,7 @@ final class WineManager: ObservableObject {
                 var env = ProcessInfo.processInfo.environment
                 env["WINEPREFIX"] = prefix.path
                 env["WINEDEBUG"] = "-all"
-                env["DYLD_FALLBACK_LIBRARY_PATH"] = Self.managedDir.path
+                env["DYLD_FALLBACK_LIBRARY_PATH"] = WineManager.dyldPath(forWine: wine, existing: env["DYLD_FALLBACK_LIBRARY_PATH"])
                 p.environment = env
                 let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
                 do { try p.run(); p.waitUntilExit() } catch { cont.resume(returning: []); return }
