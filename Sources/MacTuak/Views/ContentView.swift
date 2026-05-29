@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var storeConsole: ConsoleSession?
     @State private var showEnginePicker = false
     @State private var enginePickerMode: EnginePickerSheet.Mode = .onboarding
+    @State private var showDiagnostic = false
     @State private var prefilledURL: URL?
     @State private var recentlyUninstalled: WineApp?
     @State private var undoTask: Task<Void, Never>?
@@ -67,6 +68,10 @@ struct ContentView: View {
             if showLicenses {
                 LicensesSheet(accent: accent, onClose: { showLicenses = false })
                     .zIndex(75)
+            }
+            if showDiagnostic {
+                DiagnosticSheet(accent: accent, onClose: { showDiagnostic = false })
+                    .zIndex(85)
             }
             if showAppStore {
                 WinetricksAppStoreSheet(accent: accent,
@@ -119,7 +124,8 @@ struct ContentView: View {
                         onChangeEngine: {
                             enginePickerMode = .settings
                             showEnginePicker = true
-                        })
+                        },
+                        onRunDiagnostic: { showDiagnostic = true })
 
             ScrollView {
                 if list.isEmpty {

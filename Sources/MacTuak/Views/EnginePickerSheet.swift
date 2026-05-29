@@ -79,11 +79,14 @@ struct EnginePickerSheet: View {
 }
 
 private struct EngineRow: View {
+    @EnvironmentObject var wine: WineManager
     @Environment(\.palette) private var p
     let engine: WineEngine
     let accent: Color
     let isCurrent: Bool
     var onChoose: () -> Void
+
+    private var installed: Bool { wine.installedEngines[engine.id] != nil }
 
     @State private var hover = false
 
@@ -112,6 +115,12 @@ private struct EngineRow: View {
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Capsule().fill(Color(hex: "#28c840").opacity(0.18)))
                             .foregroundStyle(Color(hex: "#28c840"))
+                    } else if installed {
+                        Text("INSTALLED")
+                            .font(.system(size: 9, weight: .bold)).tracking(0.5)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Capsule().fill(Color(hex: "#5BA4F0").opacity(0.18)))
+                            .foregroundStyle(Color(hex: "#5BA4F0"))
                     }
                     Spacer()
                     Text("≈ \(engine.approxSizeMB) MB").font(.system(size: 11)).foregroundStyle(p.textSecondary)
@@ -120,7 +129,7 @@ private struct EngineRow: View {
                 HStack {
                     Spacer()
                     Button(action: onChoose) {
-                        Text(isCurrent ? "Reinstall" : "Use this engine")
+                        Text(isCurrent ? "Reinstall" : (installed ? "Switch to this" : "Use this engine"))
                             .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
                             .padding(.horizontal, 14).frame(height: 26)
                             .background(RoundedRectangle(cornerRadius: 7, style: .continuous)

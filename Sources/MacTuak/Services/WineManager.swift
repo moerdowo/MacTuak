@@ -119,6 +119,14 @@ final class WineManager: ObservableObject {
     @Published var winePath: String?
     @Published var winetricksCatalog: [WinetricksCategory] = []
     @Published var catalogLoading = false
+    /// Map of engineID → installed info. Tracks every engine the user has
+    /// installed so swapping doesn't redownload, and per-app overrides work.
+    @Published var installedEngines: [String: WineInstall] = [:]
+
+    struct WineInstall: Equatable, Sendable {
+        let version: String
+        let binary: String
+    }
 
     private var activeVersion = ""
     private var activeIsSystem = false
@@ -135,9 +143,18 @@ final class WineManager: ObservableObject {
 
     // MARK: - Paths
 
+    /// Root for all installed engines. Each engine lives in its own subdir.
     nonisolated static var managedDir: URL {
         LibraryStore.supportDirectory.appendingPathComponent("Wine", isDirectory: true)
     }
+    nonisolated static func engineDir(_ engineID: String) -> URL {
+        managedDir.appendingPathComponent(engineID, isDirectory: true)
+    }
+    nonisolated static func engineInfoURL(_ engineID: String) -> URL {
+        engineDir(engineID).appendingPathComponent("installed.json")
+    }
+    /// Legacy single-engine installed.json (pre per-engine subdirs); only read
+    /// during the one-time migration.
     nonisolated static var infoURL: URL {
         managedDir.appendingPathComponent("installed.json")
     }
@@ -168,16 +185,89 @@ final class WineManager: ObservableObject {
         if let data = try? JSONEncoder().encode(info) { try? data.write(to: infoURL, options: .atomic) }
     }
 
+    nonisolated private static func loadEngineInfo(_ engineID: String) -> InstalledInfo? {
+        guard let data = try? Data(contentsOf: engineInfoURL(engineID)) else { return nil }
+        return try? JSONDecoder().decode(InstalledInfo.self, from: data)
+    }
+    nonisolated private static func saveEngineInfo(_ info: InstalledInfo, engineID: String) {
+        try? FileManager.default.createDirectory(at: engineDir(engineID), withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(info) {
+            try? data.write(to: engineInfoURL(engineID), options: .atomic)
+        }
+    }
+
+    /// One-time migration from the flat `Wine/wswine.bundle/` layout to
+    /// `Wine/<engineID>/wswine.bundle/`. No-op if already migrated.
+    nonisolated private static func migrateLegacyLayoutIfNeeded() {
+        let fm = FileManager.default
+        let root = managedDir
+        guard fm.fileExists(atPath: infoURL.path),
+              let info = try? JSONDecoder().decode(InstalledInfo.self, from: Data(contentsOf: infoURL)) else { return }
+        let engineID = info.engine ?? "gcenx-stable"
+        let target = engineDir(engineID)
+        guard !fm.fileExists(atPath: target.path) else { return }   // already migrated
+        try? fm.createDirectory(at: target, withIntermediateDirectories: true)
+        // Move every non-engine item at the root into the engine subdir.
+        let items = (try? fm.contentsOfDirectory(atPath: root.path)) ?? []
+        let engineIDs = Set(WineEngines.catalog.map { $0.id })
+        for item in items {
+            if engineIDs.contains(item) { continue }              // existing engine dir
+            if item == "installed.json" { continue }              // handled separately
+            let from = root.appendingPathComponent(item)
+            let to = target.appendingPathComponent(item)
+            try? fm.moveItem(at: from, to: to)
+        }
+        // Rewrite binary path inside the moved bundle, and write per-engine info.
+        var fixed = info
+        let oldRootPrefix = root.path + "/"
+        let newRootPrefix = target.path + "/"
+        if fixed.binary.hasPrefix(oldRootPrefix) {
+            fixed.binary = newRootPrefix + String(fixed.binary.dropFirst(oldRootPrefix.count))
+        }
+        saveEngineInfo(fixed, engineID: engineID)
+        try? fm.removeItem(at: infoURL)
+    }
+
+    /// Loads every installed.json under `Wine/<engineID>/` into `installedEngines`.
+    nonisolated private static func loadAllEngineInstalls() -> [String: WineInstall] {
+        var out: [String: WineInstall] = [:]
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(atPath: managedDir.path) else { return out }
+        for item in items {
+            let info = engineInfoURL(item)
+            guard fm.fileExists(atPath: info.path),
+                  let data = try? Data(contentsOf: info),
+                  let installed = try? JSONDecoder().decode(InstalledInfo.self, from: data),
+                  fm.isExecutableFile(atPath: installed.binary) else { continue }
+            out[item] = WineInstall(version: installed.version, binary: installed.binary)
+        }
+        return out
+    }
+
     // MARK: - Bootstrap & update
 
     func bootstrap() {
         Task.detached(priority: .utility) {
-            if let info = Self.loadInfo(), FileManager.default.isExecutableFile(atPath: info.binary) {
-                // Defensive: heal pre-existing managed installs that were created
-                // before runtime libs (libinotify.0.dylib) were bundled, so
-                // Sikarugir wineserver doesn't dyld-fail on startup.
-                self.installRuntimeLibs(into: Self.managedDir, for: info.binary)
-                await self.setActive(path: info.binary, version: info.version, system: false, kind: .ready)
+            // 1. Migrate the old flat layout into per-engine subdirs.
+            Self.migrateLegacyLayoutIfNeeded()
+            // 2. Discover every installed engine.
+            let all = Self.loadAllEngineInstalls()
+            await MainActor.run { self.installedEngines = all }
+            // 3. Refresh runtime-libs in every install (libinotify, libfreetype).
+            for (_, install) in all {
+                let dir = (install.binary as NSString).deletingLastPathComponent
+                // engine dir is two levels up from `<engine>/.../bin/wine`.
+                let engineRoot = ((dir as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+                self.installRuntimeLibs(into: URL(fileURLWithPath: engineRoot), for: install.binary)
+            }
+            // 4. Activate active engine.
+            let activeID = await MainActor.run { self.engineID }
+            if !activeID.isEmpty, let install = all[activeID] {
+                await self.setActive(path: install.binary, version: install.version, system: false, kind: .ready)
+            } else if let first = all.first {
+                // No active engine selected (or selected one not installed) but
+                // *something* is installed — use it temporarily.
+                await self.setActive(path: first.value.binary, version: first.value.version, system: false, kind: .ready)
             } else if let sys = Self.locateWine() {
                 await self.setActive(path: sys.0, version: sys.1, system: true, kind: .systemFallback)
             } else {
@@ -187,22 +277,31 @@ final class WineManager: ObservableObject {
         }
     }
 
+    /// Returns the wine binary to use for a given app — its engine override if
+    /// set and installed; otherwise the currently active engine.
+    func winePath(for app: WineApp) -> String? {
+        if let id = app.engineID, let install = installedEngines[id] {
+            return install.binary
+        }
+        return winePath
+    }
+
     /// Checks the active engine's latest build and installs it if newer (or if no
     /// runtime is present). `force` re-confirms even when already up to date.
     func checkForUpdate(force: Bool) {
         guard !runtime.isBusy else { return }
-        guard let engine = WineEngines.find(engineID) else { return }   // wait until an engine is chosen
+        guard let engine = WineEngines.find(engineID) else { return }
         let haveActive = winePath != nil
-        let currentInfo = Self.loadInfo()
+        let existingInstall = installedEngines[engine.id]
 
         Task.detached(priority: .utility) {
             do {
                 let release = try await WineInstaller.latest(engine: engine)
 
-                // Already on the latest build for this engine?
-                if let info = currentInfo, info.version == release.version, (info.engine ?? "gcenx-stable") == engine.id,
-                   FileManager.default.isExecutableFile(atPath: info.binary) {
-                    await self.setActive(path: info.binary, version: info.version, system: false, kind: .ready)
+                // Already on the latest build for this engine? Just activate.
+                if let install = existingInstall, install.version == release.version,
+                   FileManager.default.isExecutableFile(atPath: install.binary) {
+                    await self.setActive(path: install.binary, version: install.version, system: false, kind: .ready)
                     return
                 }
 
@@ -224,17 +323,22 @@ final class WineManager: ObservableObject {
 
                 await MainActor.run { self.runtime = RuntimeState(kind: .installing, version: release.version) }
                 let fm = FileManager.default
-                try? fm.removeItem(at: Self.managedDir)
-                try fm.createDirectory(at: Self.managedDir.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try fm.moveItem(at: staging, to: Self.managedDir)
-                guard let bin = WineInstaller.findWineBinary(in: Self.managedDir) else {
+                let target = Self.engineDir(engine.id)
+                // Replace only THIS engine's dir — keep other engines intact.
+                try? fm.removeItem(at: target)
+                try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try fm.moveItem(at: staging, to: target)
+                guard let bin = WineInstaller.findWineBinary(in: target) else {
                     throw NSError(domain: "MacTuak", code: 4, userInfo: [NSLocalizedDescriptionKey: "wine binary missing after install"])
                 }
                 try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin)
-                self.installRuntimeLibs(into: Self.managedDir, for: bin)
-                Self.saveInfo(InstalledInfo(version: release.version, binary: bin, channel: nil, engine: engine.id))
+                self.installRuntimeLibs(into: target, for: bin)
+                Self.saveEngineInfo(InstalledInfo(version: release.version, binary: bin, channel: nil, engine: engine.id),
+                                    engineID: engine.id)
                 try? fm.removeItem(at: archive)
 
+                let install = WineInstall(version: release.version, binary: bin)
+                await MainActor.run { self.installedEngines[engine.id] = install }
                 await self.setActive(path: bin, version: release.version, system: false, kind: .ready)
             } catch {
                 await self.handleUpdateFailure(error.localizedDescription, haveActive: haveActive)
@@ -314,7 +418,7 @@ final class WineManager: ObservableObject {
     func launch(app: WineApp, admin: Bool, library: LibraryStore) -> LaunchSession {
         let session = LaunchSession(app: app)
 
-        guard let wine = winePath else {
+        guard let wine = winePath(for: app) else {
             session.phase = .error
             session.append("$ wine \"\(app.name).exe\"")
             if runtime.isBusy {
@@ -669,6 +773,227 @@ final class WineManager: ObservableObject {
                 session.append("→ bottle ready.")
                 session.phase = .exited
             }
+        }
+        return session
+    }
+
+    // MARK: - Registry helpers (used by RegistryEditor)
+
+    func regQuery(bottle: Bottle, key: String) async -> [(name: String, type: String, data: String)] {
+        guard let wine = winePath else { return [] }
+        let prefix = prefixURL(for: bottle.id)
+        return await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: wine)
+                p.arguments = ["reg", "query", key]
+                var env = ProcessInfo.processInfo.environment
+                env["WINEPREFIX"] = prefix.path
+                env["WINEDEBUG"] = "-all"
+                env["DYLD_FALLBACK_LIBRARY_PATH"] = Self.managedDir.path
+                p.environment = env
+                let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
+                do { try p.run(); p.waitUntilExit() } catch { cont.resume(returning: []); return }
+                let raw = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                var out: [(String, String, String)] = []
+                for line in raw.split(separator: "\n") {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty, !trimmed.hasPrefix("HKEY") else { continue }
+                    // Try splitting on REG_ types.
+                    let types = ["REG_SZ", "REG_DWORD", "REG_EXPAND_SZ", "REG_BINARY", "REG_MULTI_SZ", "REG_QWORD"]
+                    for type in types {
+                        if let r = trimmed.range(of: type) {
+                            let name = trimmed[..<r.lowerBound].trimmingCharacters(in: .whitespaces)
+                            let data = trimmed[r.upperBound...].trimmingCharacters(in: .whitespaces)
+                            if !name.isEmpty {
+                                out.append((name, type, data))
+                                break
+                            }
+                        }
+                    }
+                }
+                cont.resume(returning: out)
+            }
+        }
+    }
+
+    func regAdd(bottle: Bottle, key: String, name: String, data: String) -> ConsoleSession {
+        let session = ConsoleSession(title: "Set \(name) in \(key)", subtitle: "Bottle \(bottle.shortLabel)")
+        guard let wine = winePath else {
+            session.phase = .error; session.append("Wine runtime not ready."); return session
+        }
+        let prefix = prefixURL(for: bottle.id)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: wine)
+        p.arguments = ["reg", "add", key, "/v", name, "/d", data, "/f"]
+        var env = baseEnv(prefix: prefix, wine: wine); env["WINEDEBUG"] = "-all"
+        p.environment = env
+        session.append("$ wine reg add \(key) /v \(name) /d \(data) /f")
+        Task { @MainActor in
+            let code = await runStreaming(p, into: session)
+            session.append(code == 0 ? "→ set." : "→ exited \(code).")
+            session.phase = code == 0 ? .exited : .error
+        }
+        return session
+    }
+
+    func regDelete(bottle: Bottle, key: String, name: String) -> ConsoleSession {
+        let session = ConsoleSession(title: "Delete \(name)", subtitle: "Bottle \(bottle.shortLabel)")
+        guard let wine = winePath else {
+            session.phase = .error; session.append("Wine runtime not ready."); return session
+        }
+        let prefix = prefixURL(for: bottle.id)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: wine)
+        p.arguments = ["reg", "delete", key, "/v", name, "/f"]
+        var env = baseEnv(prefix: prefix, wine: wine); env["WINEDEBUG"] = "-all"
+        p.environment = env
+        session.append("$ wine reg delete \(key) /v \(name) /f")
+        Task { @MainActor in
+            let code = await runStreaming(p, into: session)
+            session.append(code == 0 ? "→ deleted." : "→ exited \(code).")
+            session.phase = code == 0 ? .exited : .error
+        }
+        return session
+    }
+
+    // MARK: - DLL overrides
+
+    /// Reads `HKCU\Software\Wine\DllOverrides` via `wine reg query` and returns
+    /// the (dll, value) pairs. Async because spawning wine can be slow.
+    func queryDllOverrides(bottle: Bottle) async -> [(dll: String, value: String)] {
+        guard let wine = winePath else { return [] }
+        let prefix = prefixURL(for: bottle.id)
+        return await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: wine)
+                p.arguments = ["reg", "query", "HKCU\\Software\\Wine\\DllOverrides"]
+                var env = ProcessInfo.processInfo.environment
+                env["WINEPREFIX"] = prefix.path
+                env["WINEDEBUG"] = "-all"
+                env["DYLD_FALLBACK_LIBRARY_PATH"] = Self.managedDir.path
+                p.environment = env
+                let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
+                do { try p.run(); p.waitUntilExit() } catch { cont.resume(returning: []); return }
+                let raw = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                var out: [(String, String)] = []
+                for line in raw.split(separator: "\n") {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty, !trimmed.hasPrefix("HKEY") else { continue }
+                    // "    d3d11    REG_SZ    native"
+                    let parts = trimmed.components(separatedBy: "REG_SZ")
+                    guard parts.count == 2 else { continue }
+                    let dll = parts[0].trimmingCharacters(in: .whitespaces)
+                    let value = parts[1].trimmingCharacters(in: .whitespaces)
+                    if !dll.isEmpty { out.append((dll, value)) }
+                }
+                cont.resume(returning: out)
+            }
+        }
+    }
+
+    /// Writes a single DLL override. Pass empty `value` to delete.
+    func setDllOverride(bottle: Bottle, dll: String, value: String) -> ConsoleSession {
+        let session = ConsoleSession(title: value.isEmpty ? "Remove override · \(dll)" : "Set override · \(dll)=\(value)",
+                                     subtitle: "Bottle \(bottle.shortLabel)")
+        guard let wine = winePath else {
+            session.phase = .error; session.append("Wine runtime not ready yet."); return session
+        }
+        let prefix = prefixURL(for: bottle.id)
+        Task { @MainActor in
+            await applyOverrides([dll], native: !value.isEmpty, wine: wine, prefix: prefix, session: session)
+            // applyOverrides sets value to "native" when on; for custom values run a more specific command.
+            if !value.isEmpty && value != "native" {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: wine)
+                p.arguments = ["reg", "add", "HKCU\\Software\\Wine\\DllOverrides",
+                               "/v", dll, "/d", value, "/f"]
+                var env = baseEnv(prefix: prefix, wine: wine); env["WINEDEBUG"] = "-all"
+                p.environment = env
+                session.append("$ wine reg add DllOverrides/\(dll) = \(value)")
+                _ = await runStreaming(p, into: session)
+            }
+            session.append("→ done.")
+            session.phase = .exited
+        }
+        return session
+    }
+
+    // MARK: - Bottle export / import
+
+    /// Archives a bottle's WINEPREFIX directory to the user-chosen `.tar.gz`.
+    /// Bottles can be huge; gzip strikes a reasonable speed/size balance for
+    /// the average game install.
+    func exportBottle(_ bottle: Bottle, to destination: URL) -> ConsoleSession {
+        let session = ConsoleSession(title: "Export \(bottle.shortLabel)",
+                                     subtitle: destination.lastPathComponent)
+        let prefix = prefixURL(for: bottle.id)
+        guard FileManager.default.fileExists(atPath: prefix.path) else {
+            session.phase = .error
+            session.append("error: prefix does not exist (\(prefix.path)).")
+            return session
+        }
+        try? FileManager.default.removeItem(at: destination)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        p.arguments = ["-czf", destination.path, "-C", bottlesDirectory.path, bottle.id]
+        session.append("$ tar -czf \(destination.path) -C \(bottlesDirectory.path) \(bottle.id)")
+        Task { @MainActor in
+            let code = await runStreaming(p, into: session)
+            let ok = code == 0
+            session.append(ok ? "→ exported." : "→ tar exited with code \(code).")
+            session.phase = ok ? .exited : .error
+            if ok {
+                Notifier.notify("Bottle exported", "\(bottle.shortLabel) → \(destination.lastPathComponent).")
+                NSWorkspace.shared.activateFileViewerSelecting([destination])
+            }
+        }
+        return session
+    }
+
+    /// Extracts a previously-exported bottle archive into the Bottles dir and
+    /// registers it in the library. The archive is expected to have a single
+    /// top-level folder (the bottle id).
+    func importBottle(from archive: URL, library: LibraryStore) -> ConsoleSession {
+        let session = ConsoleSession(title: "Import bottle", subtitle: archive.lastPathComponent)
+        try? FileManager.default.createDirectory(at: bottlesDirectory, withIntermediateDirectories: true)
+
+        // Snapshot existing bottle dir names so we can spot the new one.
+        let beforeSet = Set((try? FileManager.default.contentsOfDirectory(atPath: bottlesDirectory.path)) ?? [])
+
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        p.arguments = ["-xf", archive.path, "-C", bottlesDirectory.path]
+        session.append("$ tar -xf \(archive.path) -C \(bottlesDirectory.path)")
+
+        Task { @MainActor in
+            let code = await runStreaming(p, into: session)
+            guard code == 0 else {
+                session.append("→ tar exited with code \(code).")
+                session.phase = .error
+                return
+            }
+            let afterSet = Set((try? FileManager.default.contentsOfDirectory(atPath: bottlesDirectory.path)) ?? [])
+            let newIDs = afterSet.subtracting(beforeSet)
+            guard let id = newIDs.first else {
+                session.append("error: couldn't tell which folder was extracted.")
+                session.phase = .error
+                return
+            }
+            // Make sure id is unique in the library; rename folder if not.
+            var finalID = id
+            if library.bottles.contains(where: { $0.id == finalID }) {
+                var n = 2
+                while library.bottles.contains(where: { $0.id == "\(id)-\(n)" }) { n += 1 }
+                finalID = "\(id)-\(n)"
+                try? FileManager.default.moveItem(at: bottlesDirectory.appendingPathComponent(id),
+                                                   to: bottlesDirectory.appendingPathComponent(finalID))
+            }
+            library.ensureBottle(finalID, label: finalID.replacingOccurrences(of: "-", with: " "))
+            session.append("→ imported as bottle '\(finalID)'.")
+            session.phase = .exited
+            Notifier.notify("Bottle imported", "\(finalID) added to your library.")
         }
         return session
     }

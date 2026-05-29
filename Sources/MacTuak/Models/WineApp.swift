@@ -30,6 +30,7 @@ struct WineApp: Identifiable, Codable, Equatable {
     var iconFileName: String? = nil   // optional custom icon stored in Icons/
     var options: LaunchOptions? = nil // optional for back-compat
     var addedAt: Date? = nil
+    var engineID: String? = nil       // optional per-app wine engine override
 
     // Transient — not persisted; reflects live process state.
     var running: Bool = false
@@ -43,7 +44,7 @@ struct WineApp: Identifiable, Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, name, publisher, version, bottle, arch, sizeBytes
         case category, glyph, g1, g2, favorite, exePath, lastRun, iconFileName
-        case options, addedAt
+        case options, addedAt, engineID
     }
 
     static var iconsDirectory: URL {

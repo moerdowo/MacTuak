@@ -5,6 +5,7 @@ import AppKit
 /// Edit an existing app's name, path, bottle, category, and icon.
 struct EditAppSheet: View {
     @EnvironmentObject var library: LibraryStore
+    @EnvironmentObject var wine: WineManager
     @Environment(\.palette) private var p
     let app: WineApp
     let accent: Color
@@ -15,6 +16,7 @@ struct EditAppSheet: View {
     @State private var bottle: String
     @State private var category: String
     @State private var arch: String
+    @State private var engineID: String        // empty = use active default
     @State private var opts: LaunchOptions
     @State private var iconChoice: IconChoice
 
@@ -27,6 +29,7 @@ struct EditAppSheet: View {
         _bottle = State(initialValue: app.bottle)
         _category = State(initialValue: app.category)
         _arch = State(initialValue: app.arch)
+        _engineID = State(initialValue: app.engineID ?? "")
         _opts = State(initialValue: app.opts)
         _iconChoice = State(initialValue: app.iconFileName == nil ? .removed : .keepExisting)
     }
@@ -108,6 +111,15 @@ struct EditAppSheet: View {
                             Picker("", selection: $arch) { Text("64-bit").tag("x64"); Text("32-bit").tag("x86") }
                                 .labelsHidden().pickerStyle(.segmented).controlSize(.small).fixedSize()
                         }
+                        GridRow {
+                            Text("Engine").font(.system(size: 12, weight: .semibold)).foregroundStyle(p.textSecondary)
+                            Picker("", selection: $engineID) {
+                                Text("Active default").tag("")
+                                ForEach(WineEngines.catalog) { engine in
+                                    Text(engine.name + (wine.installedEngines[engine.id] != nil ? "" : " (not installed)")).tag(engine.id)
+                                }
+                            }.labelsHidden().controlSize(.small)
+                        }
                     }
 
                     launchOptions
@@ -152,10 +164,18 @@ struct EditAppSheet: View {
                 field("WINEDEBUG", text: $opts.winedebug, placeholder: "-all to silence")
                 GridRow {
                     Text("Virtual desktop").font(.system(size: 12, weight: .semibold)).foregroundStyle(p.textSecondary)
-                    TextField("off — e.g. 1280x720", text: $opts.virtualDesktop)
-                        .textFieldStyle(.plain).font(.system(size: 13)).padding(.horizontal, 10).frame(height: 28)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(p.control))
-                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(p.border, lineWidth: 0.5))
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("off — e.g. 1280x720", text: $opts.virtualDesktop)
+                            .textFieldStyle(.plain).font(.system(size: 13)).padding(.horizontal, 10).frame(height: 28)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(p.control))
+                            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(p.border, lineWidth: 0.5))
+                        HStack(spacing: 6) {
+                            vdChip("Off", "")
+                            vdChip("720p", "1280x720")
+                            vdChip("1080p", "1920x1080")
+                            vdChip("1440p", "2560x1440")
+                        }
+                    }
                 }
                 GridRow {
                     Text("Environment").font(.system(size: 12, weight: .semibold)).foregroundStyle(p.textSecondary)
@@ -172,6 +192,19 @@ struct EditAppSheet: View {
                 Spacer()
             }
         }
+    }
+
+    private func vdChip(_ label: String, _ value: String) -> some View {
+        let active = opts.virtualDesktop == value
+        return Button { opts.virtualDesktop = value } label: {
+            Text(label).font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 10).frame(height: 22)
+                .foregroundStyle(active ? Color.white : p.text)
+                .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(active ? AnyShapeStyle(accent) : AnyShapeStyle(p.control)))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(p.border, lineWidth: 0.5))
+        }.buttonStyle(.plain)
     }
 
     private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {
@@ -202,6 +235,7 @@ struct EditAppSheet: View {
         u.bottle = bottle
         u.category = category
         u.arch = arch
+        u.engineID = engineID.isEmpty ? nil : engineID
         u.opts = opts
         switch iconChoice {
         case .custom(let img):

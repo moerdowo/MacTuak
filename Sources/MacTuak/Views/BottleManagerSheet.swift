@@ -16,6 +16,9 @@ struct BottleManagerSheet: View {
     @State private var confirmDelete = false
     @State private var newBottle = false
     @State private var showExplorer = false
+    @State private var showDllOverrides = false
+    @State private var showRegistry = false
+    @State private var showSteamImport = false
 
     private var selected: Bottle? { library.bottles.first { $0.id == selection } }
 
@@ -70,6 +73,23 @@ struct BottleManagerSheet: View {
                                         onClose: { showExplorer = false })
                     .zIndex(5)
             }
+            if showDllOverrides, let b = selected {
+                DllOverridesSheet(bottle: b, accent: accent,
+                                  onConsole: { console = $0 },
+                                  onClose: { showDllOverrides = false })
+                    .zIndex(6)
+            }
+            if showRegistry, let b = selected {
+                RegistryEditorSheet(bottle: b, accent: accent,
+                                    onConsole: { console = $0 },
+                                    onClose: { showRegistry = false })
+                    .zIndex(6)
+            }
+            if showSteamImport, let b = selected {
+                SteamImporterSheet(bottle: b, accent: accent,
+                                   onClose: { showSteamImport = false })
+                    .zIndex(6)
+            }
         }
         .onAppear { if selection == nil { selection = library.bottles.first?.id } }
     }
@@ -99,16 +119,38 @@ struct BottleManagerSheet: View {
                     }
                 }.padding(8)
             }
-            Button { newBottle = true } label: {
-                HStack(spacing: 6) { Image(systemName: "plus"); Text("New Bottle").font(.system(size: 12, weight: .semibold)) }
-                    .frame(maxWidth: .infinity).frame(height: 30).foregroundStyle(p.text)
+            VStack(spacing: 6) {
+                Button { newBottle = true } label: {
+                    HStack(spacing: 6) { Image(systemName: "plus"); Text("New Bottle").font(.system(size: 12, weight: .semibold)) }
+                        .frame(maxWidth: .infinity).frame(height: 30).foregroundStyle(p.text)
+                }
+                .buttonStyle(.plain)
+                .solidSurface(RoundedRectangle(cornerRadius: 8, style: .continuous), p)
+
+                Button { importBottle() } label: {
+                    HStack(spacing: 6) { Image(systemName: "square.and.arrow.down"); Text("Import…").font(.system(size: 12, weight: .semibold)) }
+                        .frame(maxWidth: .infinity).frame(height: 30).foregroundStyle(p.text)
+                }
+                .buttonStyle(.plain)
+                .solidSurface(RoundedRectangle(cornerRadius: 8, style: .continuous), p)
             }
-            .buttonStyle(.plain)
-            .solidSurface(RoundedRectangle(cornerRadius: 8, style: .continuous), p)
             .padding(8)
         }
         .frame(width: 220)
         .background(p.sidebarBG)
+    }
+
+    private func importBottle() {
+        let panel = NSOpenPanel()
+        panel.title = "Import bottle archive"
+        panel.canChooseFiles = true; panel.canChooseDirectories = false
+        panel.allowedContentTypes = [UTType(filenameExtension: "tar.gz") ?? .data,
+                                     UTType(filenameExtension: "tgz") ?? .data,
+                                     UTType(filenameExtension: "tar") ?? .data, .data]
+        panel.allowsOtherFileTypes = true
+        if panel.runModal() == .OK, let url = panel.url {
+            console = wine.importBottle(from: url, library: library)
+        }
     }
 
     // MARK: detail
@@ -119,6 +161,9 @@ struct BottleManagerSheet: View {
                          onConsole: { console = $0 },
                          onScan: { scanResults = BottleScanner.scan(prefix: wine.prefixURL(for: b.id)) },
                          onBrowse: { showExplorer = true },
+                         onShowDllOverrides: { showDllOverrides = true },
+                         onShowRegistry: { showRegistry = true },
+                         onSteamImport: { showSteamImport = true },
                          onReset: { confirmReset = true },
                          onDelete: { confirmDelete = true })
                 .id(b.id)
@@ -155,6 +200,9 @@ private struct BottleDetail: View {
     var onConsole: (ConsoleSession) -> Void
     var onScan: () -> Void
     var onBrowse: () -> Void
+    var onShowDllOverrides: () -> Void
+    var onShowRegistry: () -> Void
+    var onSteamImport: () -> Void
     var onReset: () -> Void
     var onDelete: () -> Void
 
@@ -165,9 +213,13 @@ private struct BottleDetail: View {
 
     init(bottle: Bottle, accent: Color, onConsole: @escaping (ConsoleSession) -> Void,
          onScan: @escaping () -> Void, onBrowse: @escaping () -> Void,
+         onShowDllOverrides: @escaping () -> Void, onShowRegistry: @escaping () -> Void,
+         onSteamImport: @escaping () -> Void,
          onReset: @escaping () -> Void, onDelete: @escaping () -> Void) {
         self.bottle = bottle; self.accent = accent
         self.onConsole = onConsole; self.onScan = onScan; self.onBrowse = onBrowse
+        self.onShowDllOverrides = onShowDllOverrides; self.onShowRegistry = onShowRegistry
+        self.onSteamImport = onSteamImport
         self.onReset = onReset; self.onDelete = onDelete
         _label = State(initialValue: bottle.label)
         _winVer = State(initialValue: bottle.winVersion)
@@ -226,6 +278,10 @@ private struct BottleDetail: View {
                     toolButton("Install common runtimes", "shippingbox.fill") {
                         onConsole(wine.runWinetricks(verbs: Winetricks.coreRuntimeVerbs, bottle: bottle))
                     }
+                    toolButton("Export bottle…", "square.and.arrow.up") { exportBottle() }
+                    toolButton("DLL overrides…", "doc.text.below.ecg") { onShowDllOverrides() }
+                    toolButton("Registry…", "square.grid.3x3") { onShowRegistry() }
+                    toolButton("Import from Steam…", "tray.and.arrow.down") { onSteamImport() }
                 }
 
                 Divider()
@@ -363,6 +419,17 @@ private struct BottleDetail: View {
         }
         .buttonStyle(.plain)
         .solidSurface(RoundedRectangle(cornerRadius: 8, style: .continuous), p)
+    }
+
+    private func exportBottle() {
+        let panel = NSSavePanel()
+        panel.title = "Export bottle"
+        panel.nameFieldStringValue = "\(bottle.id).tar.gz"
+        panel.allowedContentTypes = [UTType(filenameExtension: "tar.gz") ?? .data, .data]
+        panel.allowsOtherFileTypes = true
+        if panel.runModal() == .OK, let url = panel.url {
+            onConsole(wine.exportBottle(bottle, to: url))
+        }
     }
 
     private func chooseInstaller() {

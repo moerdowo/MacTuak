@@ -7,6 +7,7 @@ struct TweaksButton: View {
     @Environment(\.palette) private var p
     var onShowLicenses: () -> Void
     var onChangeEngine: () -> Void
+    var onRunDiagnostic: () -> Void
     @State private var open = false
 
     var body: some View {
@@ -19,7 +20,8 @@ struct TweaksButton: View {
         .solidSurface(RoundedRectangle(cornerRadius: 10, style: .continuous), p)
         .popover(isPresented: $open, arrowEdge: .bottom) {
             TweaksContent(onShowLicenses: { open = false; onShowLicenses() },
-                          onChangeEngine: { open = false; onChangeEngine() })
+                          onChangeEngine: { open = false; onChangeEngine() },
+                          onRunDiagnostic: { open = false; onRunDiagnostic() })
                 .environmentObject(settings).environmentObject(wine)
                 .environment(\.palette, p)
                 .frame(width: 280)
@@ -32,6 +34,7 @@ private struct TweaksContent: View {
     @EnvironmentObject var wine: WineManager
     var onShowLicenses: () -> Void
     var onChangeEngine: () -> Void
+    var onRunDiagnostic: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -82,6 +85,14 @@ private struct TweaksContent: View {
             }
             .disabled(wine.runtime.isBusy)
             .controlSize(.small)
+
+            section("Troubleshooting")
+            Button(action: onRunDiagnostic) {
+                HStack(spacing: 6) {
+                    Image(systemName: "stethoscope").font(.system(size: 11))
+                    Text("Run diagnostic").font(.system(size: 12, weight: .medium))
+                }
+            }.buttonStyle(.plain).controlSize(.small)
 
             section("About")
             Button(action: onShowLicenses) {
