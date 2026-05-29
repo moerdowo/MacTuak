@@ -51,6 +51,14 @@ enum WineHints {
                 message: "Wine's built-in wined3d can't do modern Direct3D on macOS. Install dxvk from the Winetricks Browser to route D3D9/10/11 through Vulkan → MoltenVK → Metal. If this is a Chromium/Electron app, also add --disable-gpu in Edit Info → Launch Options → Arguments.")
         }
 
+        // libgnutls missing — wine prints this when it can't find the macOS
+        // libgnutls dylib to back its Windows TLS providers. Apps still run,
+        // but in-app HTTPS / login servers won't work. Known limitation.
+        if l.contains("failed to load libgnutls") {
+            return Hint(key: "no-gnutls",
+                message: "HTTPS inside Windows apps won't work — MacTuak doesn't yet ship a universal libgnutls (the chain is heavy and x86_64-on-Apple-Silicon builds keep failing in our pipeline). The game itself usually runs fine; only network/TLS features inside it are affected.")
+        }
+
         // esync mismatch — wineserver wasn't started with esync but the
         // launching wine wants it. Common after engine swaps.
         if l.contains("err:esync") || l.contains("wineserver instances are running without wineesync") {
