@@ -21,18 +21,18 @@ struct WineEngine: Identifiable, Hashable, Sendable {
 
 enum WineEngines {
     static let catalog: [WineEngine] = [
+        .init(id: "sikarugir-cx", name: "WineCX (CrossOver)",
+              description: "CrossOver's Wine. Strongest general game compatibility on macOS.",
+              badge: "Default", approxSizeMB: 220, kind: .sikarugir(prefix: "WS12WineCX")),
         .init(id: "gcenx-stable", name: "Gcenx Stable",
               description: "Vanilla Wine, broadest compatibility for everyday apps.",
-              badge: "Default", approxSizeMB: 185, kind: .gcenx(channel: "stable")),
+              badge: nil, approxSizeMB: 185, kind: .gcenx(channel: "stable")),
         .init(id: "gcenx-staging", name: "Gcenx Staging",
               description: "Wine staging — newer patches; helps with stubborn installers.",
               badge: nil, approxSizeMB: 190, kind: .gcenx(channel: "staging")),
         .init(id: "gcenx-devel", name: "Gcenx Devel",
               description: "Bleeding-edge Wine; least stable.",
               badge: nil, approxSizeMB: 190, kind: .gcenx(channel: "devel")),
-        .init(id: "sikarugir-cx", name: "WineCX (CrossOver)",
-              description: "CrossOver's Wine. Strongest general game compatibility on macOS.",
-              badge: "Games", approxSizeMB: 220, kind: .sikarugir(prefix: "WS12WineCX")),
         .init(id: "sikarugir-gptk", name: "Wine GPTK",
               description: "Apple's Game Porting Toolkit — best D3D11/12 layer for modern games.",
               badge: "GPTK", approxSizeMB: 230, kind: .sikarugir(prefix: "WS12WineGPTK")),
